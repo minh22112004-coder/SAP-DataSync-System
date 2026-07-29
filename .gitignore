@@ -1,0 +1,21 @@
+# Source data files must remain local and must not be committed.
+*.xlsx
+*.xls
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build and IDE artifacts
+bin/
+obj/
+.vs/
+.vscode/
+
+# Runtime data
+data/source/
+data/uploads/
+data/archive/
+backups/
+logs/
