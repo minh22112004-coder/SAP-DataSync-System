@@ -10,7 +10,9 @@ public sealed record UploadResult(
     long SizeBytes,
     bool AlreadyExisted);
 
-public sealed class UploadService(IConfiguration configuration)
+public sealed class UploadService(
+    IConfiguration configuration,
+    ILogger<UploadService> logger)
 {
     public bool Enabled => configuration.GetValue("Uploads:Enabled", false);
     public long MaxBytes => Math.Clamp(
@@ -34,11 +36,11 @@ public sealed class UploadService(IConfiguration configuration)
         }
 
         var uploadPath = configuration["Uploads:Path"] ?? "/data/uploads";
-        Directory.CreateDirectory(uploadPath);
         var temporaryPath = Path.Combine(uploadPath, $".{Guid.NewGuid():N}.uploading");
 
         try
         {
+            Directory.CreateDirectory(uploadPath);
             await using (var target = new FileStream(
                 temporaryPath,
                 FileMode.CreateNew,
@@ -74,6 +76,11 @@ public sealed class UploadService(IConfiguration configuration)
 
             File.Move(temporaryPath, storedPath);
             return new UploadResult(originalFileName, storedFileName, hash, file.Length, false);
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            logger.LogError(exception, "Could not persist the uploaded Excel file.");
+            throw;
         }
         finally
         {

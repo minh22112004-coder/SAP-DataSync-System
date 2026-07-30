@@ -1,6 +1,17 @@
 name: sap-datasync
 
 services:
+  volume-permissions:
+    build:
+      context: .
+      dockerfile: docker/volume-permissions.Dockerfile
+    network_mode: none
+    volumes:
+      - uploads_data:/data/uploads
+      - archive_data:/data/archive
+      - app_keys:/keys
+    restart: "no"
+
   sqlserver:
     image: ${SQLSERVER_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
     environment:
@@ -52,6 +63,8 @@ services:
     networks:
       - backend
     depends_on:
+      volume-permissions:
+        condition: service_completed_successfully
       sqlserver:
         condition: service_healthy
     healthcheck:

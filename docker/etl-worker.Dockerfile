@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir --requirement requirements.txt
 
 COPY src/EtlWorker/ ./
 
+RUN mkdir -p /data/archive \
+    && chown -R app:app /data/archive
+
 USER app
 EXPOSE 8090
 ENTRYPOINT ["python", "-m", "etl_worker.main"]

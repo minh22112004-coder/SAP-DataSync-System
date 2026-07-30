@@ -566,6 +566,13 @@ app.MapPost("/api/uploads", async (
             Detail = exception.Message
         });
     }
+    catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+    {
+        return Results.Problem(
+            title: "Không thể lưu file Excel",
+            detail: "Hệ thống không ghi được file vào vùng lưu trữ. Hãy khởi động lại hệ thống; nếu lỗi vẫn còn, kiểm tra log Web API.",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 }).RequireAuthorization();
 
 app.MapFallbackToFile("index.html");

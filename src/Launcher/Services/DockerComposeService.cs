@@ -177,7 +177,8 @@ public sealed class DockerComposeService(ProjectLocation location, CommandRunner
     private static void AddService(JsonElement element, IDictionary<string, ServiceStatus> services)
     {
         var service = ReadString(element, "Service");
-        if (string.IsNullOrWhiteSpace(service))
+        if (string.IsNullOrWhiteSpace(service) ||
+            !ExpectedServices.Contains(service, StringComparer.OrdinalIgnoreCase))
         {
             return;
         }
