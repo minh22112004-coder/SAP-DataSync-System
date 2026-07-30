@@ -18,6 +18,11 @@ __pycache__/
 .venv/
 *.py[cod]
 
+# Local planning and summary documents
+*.md
+!README.md
+!**/README.md
+
 # Runtime data
 data/source/*
 !data/source/.gitkeep
