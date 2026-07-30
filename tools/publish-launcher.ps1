@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('win-x64', 'win-arm64')]
-    [string]$Runtime = 'win-x64'
+    [string]$Runtime = 'win-x64',
+
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$Version = '1.0.1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +20,9 @@ dotnet publish $projectFile `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:PublishTrimmed=false `
     -p:DebugType=None `
+    -p:Version=$Version `
+    -p:AssemblyVersion="$Version.0" `
+    -p:FileVersion="$Version.0" `
     --output $outputDirectory
 
 if ($LASTEXITCODE -ne 0) {

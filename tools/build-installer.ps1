@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.0'
+    [string]$Version = '1.0.1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,7 +9,7 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $publishScript = Join-Path $PSScriptRoot 'publish-launcher.ps1'
 $installerScript = Join-Path $projectRoot 'installer\SapDataSync.iss'
 
-& $publishScript -Runtime win-x64
+& $publishScript -Runtime win-x64 -Version $Version
 if ($LASTEXITCODE -ne 0) {
     throw "Publish Launcher thất bại với exit code $LASTEXITCODE."
 }

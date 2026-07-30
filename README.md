@@ -59,10 +59,10 @@ File kết quả nằm tại `artifacts\launcher\win-x64\SapDataSync.Launcher.ex
 Tạo bộ cài đặt Windows có shortcut và uninstaller an toàn:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 1.0.0
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 1.0.1
 ```
 
-File kết quả nằm tại `artifacts\installer\SapDataSync-Setup-1.0.0.exe`. Bộ cài không chứa `.env`, API key, database hoặc file Excel. Uninstaller không tự xóa Docker volume và dữ liệu người dùng. Bản phát hành thương mại phải dùng license Inno Setup phù hợp và ký số `Setup.exe` bằng chứng thư của đơn vị phát hành để giảm cảnh báo SmartScreen.
+File kết quả nằm tại `artifacts\installer\SapDataSync-Setup-1.0.1.exe`. Bộ cài không chứa `.env`, API key, database hoặc file Excel. Uninstaller không tự xóa Docker volume và dữ liệu người dùng. Bản phát hành thương mại phải dùng license Inno Setup phù hợp và ký số `Setup.exe` bằng chứng thư của đơn vị phát hành để giảm cảnh báo SmartScreen.
 
 Docker Desktop vẫn phải được cài trên máy chạy hệ thống. Launcher không yêu cầu quyền Administrator và không hiển thị cửa sổ dòng lệnh. Nếu chưa có `.env`, lần khởi động đầu tiên sẽ tự tạo cấu hình từ `.env.example` với mật khẩu SQL Server ngẫu nhiên mạnh; mật khẩu không được hiển thị trên giao diện hoặc ghi vào log. AI vẫn mặc định tắt cho tới khi API key được cấu hình an toàn.
 

@@ -1,5 +1,5 @@
 SAP DATASYNC — HƯỚNG DẪN VẬN HÀNH VÀ BÀN GIAO
-Phiên bản: 1.0.0 — Giai đoạn 5
+Phiên bản: 1.0.1 — Giai đoạn 5
 
 1. YÊU CẦU MÁY TRIỂN KHAI
 
@@ -11,7 +11,7 @@ Phiên bản: 1.0.0 — Giai đoạn 5
 
 2. CÀI ĐẶT VÀ KHỞI ĐỘNG
 
-1) Chạy SapDataSync-Setup-1.0.0.exe.
+1) Chạy SapDataSync-Setup-1.0.1.exe.
 2) Mở SAP DataSync từ Start Menu hoặc shortcut Desktop.
 3) Bấm “Khởi động hệ thống”. Lần đầu có thể mất vài phút để build image.
 4) Khi ba dịch vụ báo màu xanh, bấm “Mở Web App”.
