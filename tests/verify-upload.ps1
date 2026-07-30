@@ -1,6 +1,7 @@
 param(
     [string]$BaseUri = "http://localhost:8080",
-    [string]$ExcelPath = ".\data\source\export.xlsx"
+    [string]$ExcelPath = ".\data\source\export.xlsx",
+    [string]$AdminPassword = "Stage5Validation!2026"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,8 +11,30 @@ if (-not (Test-Path -LiteralPath $ExcelPath -PathType Leaf)) {
     throw "Excel test file not found: $ExcelPath"
 }
 
+$handler = [System.Net.Http.HttpClientHandler]::new()
+$handler.UseCookies = $true
+$client = [System.Net.Http.HttpClient]::new($handler)
+$client.DefaultRequestHeaders.Add("X-SapDataSync-Admin", "1")
+
+function Send-AdminAuth([string]$Endpoint) {
+    $json = @{ password = $AdminPassword } | ConvertTo-Json
+    $content = [System.Net.Http.StringContent]::new($json, [System.Text.Encoding]::UTF8, "application/json")
+    try {
+        $response = $client.PostAsync("$BaseUri/api/admin/$Endpoint", $content).GetAwaiter().GetResult()
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            throw "Admin authentication failed with HTTP $([int]$response.StatusCode): $body"
+        }
+    }
+    finally {
+        $content.Dispose()
+    }
+}
+
+$statusJson = $client.GetStringAsync("$BaseUri/api/admin/status").GetAwaiter().GetResult() | ConvertFrom-Json
+Send-AdminAuth $(if ($statusJson.setupRequired) { "setup" } else { "login" })
+
 function Send-ExcelUpload([string]$Path) {
-    $client = [System.Net.Http.HttpClient]::new()
     $form = [System.Net.Http.MultipartFormDataContent]::new()
     $stream = [System.IO.File]::OpenRead((Resolve-Path -LiteralPath $Path).Path)
     $fileContent = [System.Net.Http.StreamContent]::new($stream)
@@ -29,7 +52,6 @@ function Send-ExcelUpload([string]$Path) {
     finally {
         $form.Dispose()
         $stream.Dispose()
-        $client.Dispose()
     }
 }
 
@@ -56,3 +78,6 @@ Write-Host "Upload verification passed."
 Write-Host "Stored file: $($first.storedFileName)"
 Write-Host "SHA-256: $sourceHash"
 Write-Host "Duplicate behavior: reused existing upload"
+
+$client.Dispose()
+$handler.Dispose()

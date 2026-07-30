@@ -7,7 +7,10 @@ using SapDataSync.WebApi.Models;
 
 namespace SapDataSync.WebApi.Services;
 
-public sealed class AiPlanningService(HttpClient httpClient, IConfiguration configuration)
+public sealed class AiPlanningService(
+    HttpClient httpClient,
+    IConfiguration configuration,
+    AdminSettingsService adminSettingsService)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -80,23 +83,20 @@ public sealed class AiPlanningService(HttpClient httpClient, IConfiguration conf
         "Sales Organization SG50" thì phải trả "product":"12" và "salesOrganization":"SG50".
         """;
 
-    public bool Enabled =>
-        configuration.GetValue("AI:Enabled", false) &&
-        !string.IsNullOrWhiteSpace(configuration["AI:ApiKey"]);
-
     public int MaxRecords => Math.Clamp(configuration.GetValue("AI:MaxRecords", 50), 10, 100);
 
-    public AiStatus GetStatus() => new(
-        Enabled,
-        configuration["AI:Provider"] ?? "Groq",
-        configuration["AI:Model"] ?? "llama-3.3-70b-versatile",
-        MaxRecords);
+    public async Task<AiStatus> GetStatusAsync(CancellationToken cancellationToken)
+    {
+        var settings = await adminSettingsService.GetAiSettingsAsync(cancellationToken);
+        return new AiStatus(settings.Enabled, settings.Provider, settings.Model, settings.MaxRecords);
+    }
 
     public async Task<AiPlanResponse> GeneratePlanAsync(
         AiPlanRequest request,
         PagedResponse<SapDataListItem> data,
         CancellationToken cancellationToken)
     {
+        var settings = await adminSettingsService.GetAiSettingsAsync(cancellationToken);
         if (data.Items.Count == 0)
         {
             throw new AiProviderException(
@@ -135,12 +135,12 @@ public sealed class AiPlanningService(HttpClient httpClient, IConfiguration conf
             })
         }, JsonOptions);
 
-        var content = await SendJsonCompletionAsync(PlanningSystemPrompt, userContent, cancellationToken);
+        var content = await SendJsonCompletionAsync(settings, PlanningSystemPrompt, userContent, cancellationToken);
         var plan = ParsePlan(content);
         return new AiPlanResponse(
             plan,
-            configuration["AI:Provider"] ?? "Groq",
-            configuration["AI:Model"] ?? "llama-3.3-70b-versatile",
+            settings.Provider,
+            settings.Model,
             data.Items.Count,
             data.TotalItems,
             DateTimeOffset.UtcNow,
@@ -151,7 +151,9 @@ public sealed class AiPlanningService(HttpClient httpClient, IConfiguration conf
         AiFilterRequest request,
         CancellationToken cancellationToken)
     {
+        var settings = await adminSettingsService.GetAiSettingsAsync(cancellationToken);
         var content = await SendJsonCompletionAsync(
+            settings,
             FilterSystemPrompt,
             JsonSerializer.Serialize(new { question = request.Question.Trim() }, JsonOptions),
             cancellationToken);
@@ -211,26 +213,63 @@ public sealed class AiPlanningService(HttpClient httpClient, IConfiguration conf
             query,
             draft.Summary.Trim(),
             draft.Assumptions.Where(value => !string.IsNullOrWhiteSpace(value)).Take(10).ToArray(),
-            configuration["AI:Provider"] ?? "Groq",
-            configuration["AI:Model"] ?? "llama-3.3-70b-versatile",
+            settings.Provider,
+            settings.Model,
             true);
     }
 
+    public async Task<AiConnectionTestResponse> TestConnectionAsync(
+        string? candidateApiKey,
+        CancellationToken cancellationToken)
+    {
+        var settings = await adminSettingsService.GetAiSettingsAsync(cancellationToken);
+        var apiKey = string.IsNullOrWhiteSpace(candidateApiKey)
+            ? settings.ApiKey
+            : candidateApiKey.Trim();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new ArgumentException("Hãy nhập API key trước khi kiểm tra kết nối.");
+        }
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{settings.BaseUrl.TrimEnd('/')}/models");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new AiProviderException(
+                response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                    ? "API key không hợp lệ hoặc không có quyền truy cập."
+                    : "AI Provider chưa thể xác nhận kết nối. Hãy thử lại sau.",
+                response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                    ? HttpStatusCode.BadRequest
+                    : HttpStatusCode.BadGateway);
+        }
+
+        return new AiConnectionTestResponse(
+            true,
+            settings.Provider,
+            settings.Model,
+            "Kết nối AI Provider thành công.");
+    }
+
     private async Task<string> SendJsonCompletionAsync(
+        AiRuntimeSettings settings,
         string systemPrompt,
         string userContent,
         CancellationToken cancellationToken)
     {
-        if (!Enabled)
+        if (!settings.Enabled || string.IsNullOrWhiteSpace(settings.ApiKey))
         {
             throw new AiProviderException(
-                "AI chưa được cấu hình. Hãy đặt AI_ENABLED=true và AI_API_KEY trong file .env.",
+                "AI chưa được cấu hình. Quản trị viên có thể thêm API key trong trang Cài đặt.",
                 HttpStatusCode.ServiceUnavailable);
         }
 
         var providerRequest = new
         {
-            model = configuration["AI:Model"] ?? "llama-3.3-70b-versatile",
+            model = settings.Model,
             temperature = 0.1,
             response_format = new { type = "json_object" },
             messages = new object[]
@@ -240,9 +279,10 @@ public sealed class AiPlanningService(HttpClient httpClient, IConfiguration conf
             }
         };
 
-        var baseUrl = (configuration["AI:BaseUrl"] ?? "https://api.groq.com/openai/v1").TrimEnd('/');
-        using var message = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/chat/completions");
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", configuration["AI:ApiKey"]);
+        using var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{settings.BaseUrl.TrimEnd('/')}/chat/completions");
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
         message.Content = new StringContent(
             JsonSerializer.Serialize(providerRequest, JsonOptions),
             Encoding.UTF8,

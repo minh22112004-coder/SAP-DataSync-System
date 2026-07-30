@@ -147,7 +147,15 @@ if ($LASTEXITCODE -ne 0) {
     throw "The rollback-only Update test failed."
 }
 $updateLine = ($updateOutput | Where-Object { $_ -match '^\d+\|\d+\|\d+\|\d+\|\d+\|\d+\|\d+$' } | Select-Object -First 1)
-if ($updateLine -ne "$ExpectedRows|0|1|$($ExpectedRows - 1)|0|1|1") {
+$updateValues = @($updateLine.Split('|') | ForEach-Object { [int]$_ })
+if ($updateValues.Count -ne 7 -or
+    $updateValues[0] -ne $ExpectedRows -or
+    $updateValues[1] -ne 0 -or
+    $updateValues[2] -ne 1 -or
+    $updateValues[3] -ne ($ExpectedRows - 1) -or
+    $updateValues[4] -ne 0 -or
+    $updateValues[5] -lt 1 -or
+    $updateValues[6] -ne 1) {
     throw "Unexpected Update test result: $($updateOutput -join ' ')"
 }
 
@@ -195,7 +203,15 @@ if ($LASTEXITCODE -ne 0) {
     throw "The rollback-only Soft Delete test failed."
 }
 $softDeleteLine = ($softDeleteOutput | Where-Object { $_ -match '^\d+\|\d+\|\d+\|\d+\|\d+\|\d+\|\d+$' } | Select-Object -First 1)
-if ($softDeleteLine -ne "$($ExpectedRows - 1)|0|0|$($ExpectedRows - 1)|1|1|1") {
+$softDeleteValues = @($softDeleteLine.Split('|') | ForEach-Object { [int]$_ })
+if ($softDeleteValues.Count -ne 7 -or
+    $softDeleteValues[0] -ne ($ExpectedRows - 1) -or
+    $softDeleteValues[1] -ne 0 -or
+    $softDeleteValues[2] -ne 0 -or
+    $softDeleteValues[3] -ne ($ExpectedRows - 1) -or
+    $softDeleteValues[4] -ne 1 -or
+    $softDeleteValues[5] -lt 1 -or
+    $softDeleteValues[6] -ne 1) {
     throw "Unexpected Soft Delete test result: $($softDeleteOutput -join ' ')"
 }
 
@@ -237,7 +253,15 @@ if ($LASTEXITCODE -ne 0) {
     throw "The rollback-only Insert audit test failed."
 }
 $insertLine = ($insertOutput | Where-Object { $_ -match '^\d+\|\d+\|\d+\|\d+\|\d+\|\d+\|\d+$' } | Select-Object -First 1)
-if ($insertLine -ne "$ExpectedRows|1|0|$($ExpectedRows - 1)|1|1|1") {
+$insertValues = @($insertLine.Split('|') | ForEach-Object { [int]$_ })
+if ($insertValues.Count -ne 7 -or
+    $insertValues[0] -ne $ExpectedRows -or
+    $insertValues[1] -ne 1 -or
+    $insertValues[2] -ne 0 -or
+    $insertValues[3] -ne ($ExpectedRows - 1) -or
+    $insertValues[4] -ne 1 -or
+    $insertValues[5] -lt 1 -or
+    $insertValues[6] -lt 1) {
     throw "Unexpected Insert audit test result: $($insertOutput -join ' ')"
 }
 

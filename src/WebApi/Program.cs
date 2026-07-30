@@ -1,3 +1,7 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http.Features;
@@ -15,8 +19,37 @@ builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 
 
 builder.Services.AddProblemDetails();
 builder.Services.AddMemoryCache();
+var dataProtectionKeysPath = builder.Configuration["Security:DataProtectionKeysPath"]
+    ?? Path.Combine(AppContext.BaseDirectory, "data-protection-keys");
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath))
+    .SetApplicationName("SapDataSync");
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "SapDataSync.Admin";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+        options.Events.OnRedirectToLogin = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
+builder.Services.AddAuthorization();
 builder.Services.AddSingleton<DatabaseBootstrapper>();
 builder.Services.AddScoped<SapDataQueryService>();
+builder.Services.AddScoped<AdminSettingsService>();
 builder.Services.AddSingleton<UploadService>();
 builder.Services.AddHttpClient<AiPlanningService>(client =>
 {
@@ -30,6 +63,13 @@ builder.Services.AddRateLimiter(options =>
     {
         limiter.PermitLimit = Math.Clamp(builder.Configuration.GetValue("AI:RequestsPerMinute", 5), 1, 30);
         limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
+    options.AddFixedWindowLimiter("admin-auth", limiter =>
+    {
+        limiter.PermitLimit = 10;
+        limiter.Window = TimeSpan.FromMinutes(5);
         limiter.QueueLimit = 0;
         limiter.AutoReplenishment = true;
     });
@@ -49,6 +89,8 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Configuration.GetValue("Database:Initialize", true))
 {
@@ -92,6 +134,183 @@ app.MapGet("/api/health", async (IConfiguration configuration, CancellationToken
     }
 });
 
+app.MapGet("/api/admin/status", async (
+    HttpContext context,
+    AdminSettingsService settingsService,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await settingsService.GetStatusAsync(
+        context.User.Identity?.IsAuthenticated == true,
+        cancellationToken)));
+
+app.MapPost("/api/admin/setup", async (
+    AdminSetupRequest request,
+    HttpContext context,
+    AdminSettingsService settingsService,
+    CancellationToken cancellationToken) =>
+{
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
+    try
+    {
+        await settingsService.CreateAdminAsync(
+            request.Password,
+            context.Connection.RemoteIpAddress?.ToString(),
+            cancellationToken);
+        await SignInAdminAsync(context);
+        return Results.Ok(await settingsService.GetStatusAsync(true, cancellationToken));
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [nameof(request.Password)] = [exception.Message]
+        });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new ProblemDetails
+        {
+            Title = "Không thể thiết lập quản trị",
+            Detail = exception.Message
+        });
+    }
+}).RequireRateLimiting("admin-auth");
+
+app.MapPost("/api/admin/login", async (
+    AdminLoginRequest request,
+    HttpContext context,
+    AdminSettingsService settingsService,
+    CancellationToken cancellationToken) =>
+{
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
+    var valid = await settingsService.ValidateAdminPasswordAsync(
+        request.Password,
+        context.Connection.RemoteIpAddress?.ToString(),
+        cancellationToken);
+    if (!valid)
+    {
+        return Results.Json(
+            new ProblemDetails
+            {
+                Title = "Đăng nhập không thành công",
+                Detail = "Mật khẩu quản trị không đúng."
+            },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await SignInAdminAsync(context);
+    return Results.Ok(await settingsService.GetStatusAsync(true, cancellationToken));
+}).RequireRateLimiting("admin-auth");
+
+app.MapPost("/api/admin/logout", async (
+    HttpContext context,
+    AdminSettingsService settingsService,
+    CancellationToken cancellationToken) =>
+{
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
+    await settingsService.WriteLogoutAuditAsync(
+        context.Connection.RemoteIpAddress?.ToString(),
+        cancellationToken);
+    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Ok(new { message = "Đã đăng xuất." });
+}).RequireAuthorization();
+
+app.MapPut("/api/admin/settings/ai", async (
+    AiApiKeyUpdateRequest request,
+    HttpContext context,
+    AdminSettingsService settingsService,
+    CancellationToken cancellationToken) =>
+{
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
+    try
+    {
+        await settingsService.SaveAiApiKeyAsync(
+            request.ApiKey,
+            context.User.Identity?.Name ?? "admin",
+            context.Connection.RemoteIpAddress?.ToString(),
+            cancellationToken);
+        return Results.Ok(await settingsService.GetStatusAsync(true, cancellationToken));
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [nameof(request.ApiKey)] = [exception.Message]
+        });
+    }
+}).RequireAuthorization();
+
+app.MapDelete("/api/admin/settings/ai", async (
+    HttpContext context,
+    AdminSettingsService settingsService,
+    CancellationToken cancellationToken) =>
+{
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
+    await settingsService.RemoveAiApiKeyAsync(
+        context.User.Identity?.Name ?? "admin",
+        context.Connection.RemoteIpAddress?.ToString(),
+        cancellationToken);
+    return Results.Ok(await settingsService.GetStatusAsync(true, cancellationToken));
+}).RequireAuthorization();
+
+app.MapPost("/api/admin/settings/ai/test", async (
+    AiApiKeyTestRequest request,
+    HttpContext context,
+    AiPlanningService aiService,
+    CancellationToken cancellationToken) =>
+{
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
+    try
+    {
+        return Results.Ok(await aiService.TestConnectionAsync(request.ApiKey, cancellationToken));
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.BadRequest(new ProblemDetails
+        {
+            Title = "Thiếu API key",
+            Detail = exception.Message
+        });
+    }
+    catch (AiProviderException exception)
+    {
+        return Results.Problem(
+            title: "Không thể xác nhận API key",
+            detail: exception.Message,
+            statusCode: (int)exception.StatusCode);
+    }
+    catch (HttpRequestException)
+    {
+        return Results.Problem(
+            title: "Không thể kết nối AI Provider",
+            detail: "Kiểm tra kết nối Internet hoặc thử lại sau.",
+            statusCode: StatusCodes.Status502BadGateway);
+    }
+}).RequireAuthorization();
+
 app.MapGet("/api/sap-data", async (
     [AsParameters] SapDataQuery query,
     SapDataQueryService service,
@@ -124,8 +343,10 @@ app.MapGet("/api/sap-data/{id:long}", async (
         : Results.Ok(item);
 });
 
-app.MapGet("/api/ai/status", (AiPlanningService aiService) =>
-    Results.Ok(aiService.GetStatus()));
+app.MapGet("/api/ai/status", async (
+    AiPlanningService aiService,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await aiService.GetStatusAsync(cancellationToken)));
 
 app.MapPost("/api/ai/filters", async (
     AiFilterRequest request,
@@ -137,14 +358,6 @@ app.MapPost("/api/ai/filters", async (
     if (validation is not null)
     {
         return Results.ValidationProblem(validation);
-    }
-
-    if (!aiService.Enabled)
-    {
-        return Results.Problem(
-            title: "AI chưa được cấu hình",
-            detail: "Hãy đặt AI_ENABLED=true và AI_API_KEY trong file .env local.",
-            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     try
@@ -190,14 +403,6 @@ app.MapPost("/api/ai/plans", async (
     if (validation is not null)
     {
         return Results.ValidationProblem(validation);
-    }
-
-    if (!aiService.Enabled)
-    {
-        return Results.Problem(
-            title: "AI chưa được cấu hình",
-            detail: "Hãy đặt AI_ENABLED=true và AI_API_KEY trong file .env local.",
-            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     try
@@ -270,9 +475,15 @@ app.MapGet("/api/import-logs/{id:guid}/changes", async (
 });
 
 app.MapPost("/api/imports/run", async (
+    HttpContext context,
     ManualImportService service,
     CancellationToken cancellationToken) =>
 {
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
     try
     {
         var result = await service.StartAsync(cancellationToken);
@@ -285,7 +496,7 @@ app.MapPost("/api/imports/run", async (
             detail: "Không thể gửi yêu cầu import thủ công. Hãy kiểm tra ETL Worker đang chạy.",
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/imports/status", async (
     ManualImportService service,
@@ -305,10 +516,16 @@ app.MapGet("/api/imports/status", async (
 });
 
 app.MapPost("/api/uploads", async (
+    HttpContext context,
     HttpRequest request,
     UploadService uploadService,
     CancellationToken cancellationToken) =>
 {
+    if (!HasAdminRequestHeader(context.Request))
+    {
+        return Results.BadRequest(new ProblemDetails { Title = "Yêu cầu quản trị không hợp lệ." });
+    }
+
     if (!uploadService.Enabled)
     {
         return Results.Problem(
@@ -349,11 +566,29 @@ app.MapPost("/api/uploads", async (
             Detail = exception.Message
         });
     }
-});
+}).RequireAuthorization();
 
 app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
+
+static bool HasAdminRequestHeader(HttpRequest request) =>
+    string.Equals(request.Headers["X-SapDataSync-Admin"], "1", StringComparison.Ordinal);
+
+static Task SignInAdminAsync(HttpContext context)
+{
+    var identity = new ClaimsIdentity(
+        [new Claim(ClaimTypes.Name, "admin"), new Claim(ClaimTypes.Role, "Administrator")],
+        CookieAuthenticationDefaults.AuthenticationScheme);
+    return context.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        new ClaimsPrincipal(identity),
+        new AuthenticationProperties
+        {
+            IsPersistent = false,
+            ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8)
+        });
+}
 
 static SapDataQuery CreateAiQuery(SapDataQuery source, int maxRecords) => new()
 {

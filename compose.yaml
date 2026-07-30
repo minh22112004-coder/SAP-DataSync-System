@@ -5,10 +5,11 @@ services:
     image: ${SQLSERVER_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_PID: ${MSSQL_PID:-Developer}
+      MSSQL_PID: ${MSSQL_PID:-Express}
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     volumes:
       - sql_data:/var/opt/mssql
+      - ./backups:/var/opt/mssql/backup
     networks:
       - backend
     healthcheck:
@@ -42,8 +43,10 @@ services:
       AI__MaxRecords: ${AI_MAX_RECORDS:-50}
       AI__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-30}
       AI__RequestsPerMinute: ${AI_REQUESTS_PER_MINUTE:-5}
+      Security__DataProtectionKeysPath: /keys
     volumes:
       - uploads_data:/data/uploads
+      - app_keys:/keys
     ports:
       - "${WEB_PORT:-8080}:8080"
     networks:
@@ -117,3 +120,4 @@ volumes:
   sql_data:
   uploads_data:
   archive_data:
+  app_keys:

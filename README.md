@@ -33,6 +33,39 @@ Python ETL dùng APScheduler, `openpyxl(read_only=True)`, `pyodbc`, `hashlib` v�
 
 Người dùng cuối không cần cài Docker; Docker chỉ chạy trên máy phát triển hoặc máy chủ triển khai.
 
+## Windows Launcher — Giai đoạn 5
+
+Máy Windows triển khai hệ thống có thể dùng giao diện `SapDataSync Launcher` thay cho việc nhập lệnh Docker Compose. Launcher chạy bên ngoài Docker và cung cấp:
+
+- **Khởi động hệ thống**: tự mở Docker Desktop nếu cần; lần chạy đầu sẽ build image, các lần sau chỉ khởi động container.
+- **Dừng hệ thống**: dùng `docker compose stop`, không xóa container, database hoặc volume dữ liệu.
+- **Mở Web App**: mở đúng cổng `WEB_PORT` trong trình duyệt.
+- **Làm mới trạng thái**: hiển thị riêng SQL Server, Web App và ETL Worker; trạng thái tự cập nhật mỗi 10 giây.
+
+Chạy Launcher trong môi trường phát triển:
+
+```powershell
+dotnet run --project .\src\Launcher\SapDataSync.Launcher.csproj
+```
+
+Tạo file `.exe` self-contained cho Windows x64, không yêu cầu cài .NET Runtime:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\publish-launcher.ps1
+```
+
+File kết quả nằm tại `artifacts\launcher\win-x64\SapDataSync.Launcher.exe`. Giữ file trong bộ thư mục triển khai có `compose.yaml`; Launcher tự tìm thư mục gốc từ vị trí của nó. Có thể đặt biến môi trường `SAPDATASYNC_ROOT` khi cần lưu Launcher ở vị trí khác.
+
+Tạo bộ cài đặt Windows có shortcut và uninstaller an toàn:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 1.0.0
+```
+
+File kết quả nằm tại `artifacts\installer\SapDataSync-Setup-1.0.0.exe`. Bộ cài không chứa `.env`, API key, database hoặc file Excel. Uninstaller không tự xóa Docker volume và dữ liệu người dùng. Bản phát hành thương mại phải dùng license Inno Setup phù hợp và ký số `Setup.exe` bằng chứng thư của đơn vị phát hành để giảm cảnh báo SmartScreen.
+
+Docker Desktop vẫn phải được cài trên máy chạy hệ thống. Launcher không yêu cầu quyền Administrator và không hiển thị cửa sổ dòng lệnh. Nếu chưa có `.env`, lần khởi động đầu tiên sẽ tự tạo cấu hình từ `.env.example` với mật khẩu SQL Server ngẫu nhiên mạnh; mật khẩu không được hiển thị trên giao diện hoặc ghi vào log. AI vẫn mặc định tắt cho tới khi API key được cấu hình an toàn.
+
 ## Cấu hình
 
 Tạo file `.env` từ mẫu:
@@ -66,7 +99,7 @@ Copy-Item -LiteralPath .\export.xlsx -Destination .\data\source\export.xlsx
 Các cấu hình ETL Worker trong `.env`:
 
 - `SAP_FILE_PATTERN`: mẫu tên file, mặc định `export*.xlsx`.
-- `WEB_UPLOAD_ENABLED`: bật/tắt API upload; `.env.example` mặc định `false`.
+- `WEB_UPLOAD_ENABLED`: bật/tắt API upload; `.env.example` mặc định `true`, nhưng endpoint chỉ cho quản trị viên đã đăng nhập.
 - `WEB_UPLOAD_MAX_BYTES`: kích thước upload tối đa, mặc định `104857600` byte (100 MB).
 - `SAP_WORKSHEET_NAME`: tên worksheet; để trống để đọc worksheet đầu tiên.
 - `ETL_DAILY_TIME`: giờ chạy mỗi ngày theo định dạng `HH:MM`, mặc định `01:00`.
@@ -76,9 +109,17 @@ Các cấu hình ETL Worker trong `.env`:
 - `ETL_BATCH_SIZE`: số dòng mỗi lần bulk insert.
 - `ETL_RUN_ON_STARTUP`: đặt `true` nếu muốn chạy thêm một lần khi container khởi động.
 
-### Generative AI tạo kế hoạch — Giai đoạn 4
+### Generative AI tạo kế hoạch — Giai đoạn 4/5
 
-AI mặc định bị tắt để repository chạy được mà không cần API key. Tạo Groq API key, sau đó đặt trong `.env` local:
+AI mặc định bị tắt để hệ thống chạy được mà không cần API key. Cách cấu hình khuyến nghị ở Giai đoạn 5:
+
+1. Mở **Cài đặt** trên Web App.
+2. Tạo hoặc đăng nhập tài khoản quản trị.
+3. Nhập API key, bấm **Kiểm tra kết nối**, sau đó **Lưu API key**.
+
+API key được mã hóa phía server bằng ASP.NET Data Protection; key ring nằm trong Docker volume `app_keys`. Trình duyệt chỉ nhận trạng thái đã cấu hình và chuỗi che, không nhận lại key gốc. Mật khẩu quản trị được băm PBKDF2; các lần đăng nhập và thay đổi key có audit trong SQL Server.
+
+Cấu hình `.env` dưới đây chỉ còn là phương án tương thích cho môi trường phát triển chưa thiết lập trang quản trị:
 
 ```env
 AI_ENABLED=true
@@ -152,6 +193,22 @@ docker compose logs -f web-api
 docker compose logs -f etl-worker
 docker compose logs -f sqlserver
 ```
+
+Hướng dẫn đầy đủ dành cho người nhận bàn giao nằm tại `docs\HUONG_DAN_VAN_HANH.txt` và được đóng gói trong `Setup.exe`.
+
+## Backup SQL Server
+
+Khi hệ thống đang chạy, tạo backup `COPY_ONLY` có checksum và tự chạy `RESTORE VERIFYONLY`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\backup-database.ps1
+```
+
+File `.bak` được lưu trong `backups\` và bị Git ignore. Cần sao chép backup sang vị trí độc lập và thử restore trên môi trường riêng; `VERIFYONLY` không thay thế cho bài kiểm thử restore đầy đủ.
+
+## SQL Server edition cho production
+
+`.env.example` và Compose mặc định dùng `MSSQL_PID=Express`, phù hợp với deployment nhỏ trong giới hạn của SQL Server Express. `Developer` chỉ dùng cho phát triển/kiểm thử, không dùng production. Nếu đổi sang Standard hoặc Enterprise, tổ chức phải có license hợp lệ trước khi triển khai. Xem tài liệu Microsoft: <https://learn.microsoft.com/en-us/sql/linux/containers/deploy> và <https://www.microsoft.com/licensing/guidance/SQL>.
 
 Mỗi file mới đi qua luồng:
 
@@ -319,4 +376,4 @@ compose.yaml
 - [x] Giai đoạn 2B: chuyển sang Python ETL Worker và kiểm thử tương đương.
 - [x] Giai đoạn 3: Web API và Web App dữ liệu.
 - [ ] Giai đoạn 4: đã hoàn tất code 4A/4B, kiểm thử mock và Groq thật; chờ kiểm tra giao diện thực tế và người dùng nghiệp vụ nghiệm thu 10 tình huống mẫu.
-- [ ] Giai đoạn 5: kiểm thử, đóng gói và bàn giao.
+- [x] Giai đoạn 5: nghiệm thu kỹ thuật, launcher, Setup.exe, quản trị API key, backup và tài liệu bàn giao; còn ký số bản phát hành và UAT trực quan của người dùng nghiệp vụ trước production.

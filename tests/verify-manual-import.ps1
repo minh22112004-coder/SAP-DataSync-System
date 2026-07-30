@@ -1,16 +1,25 @@
 param(
     [string]$BaseUri = "http://localhost:8080",
-    [int]$TimeoutSeconds = 120
+    [int]$TimeoutSeconds = 120,
+    [string]$AdminPassword = "Stage5Validation!2026"
 )
 
 $ErrorActionPreference = "Stop"
+$adminSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$adminHeaders = @{ "X-SapDataSync-Admin" = "1" }
+$adminStatus = Invoke-RestMethod -Uri "$BaseUri/api/admin/status"
+$authEndpoint = if ($adminStatus.setupRequired) { "setup" } else { "login" }
+$authBody = @{ password = $AdminPassword } | ConvertTo-Json
+$null = Invoke-RestMethod -Method Post -Uri "$BaseUri/api/admin/$authEndpoint" `
+    -Headers $adminHeaders -ContentType "application/json" -Body $authBody -WebSession $adminSession
 
 $before = Invoke-RestMethod -Uri "$BaseUri/api/imports/status"
 if ($before.running) {
     Write-Host "An import is already running; waiting for it to finish."
 }
 else {
-    $accepted = Invoke-RestMethod -Method Post -Uri "$BaseUri/api/imports/run"
+    $accepted = Invoke-RestMethod -Method Post -Uri "$BaseUri/api/imports/run" `
+        -Headers $adminHeaders -WebSession $adminSession
     if (-not $accepted.running -or $accepted.trigger -ne "manual") {
         throw "The manual import request was not accepted."
     }

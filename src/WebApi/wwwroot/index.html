@@ -16,6 +16,7 @@
     <nav class="primary-nav" aria-label="Điều hướng chính">
       <button class="nav-item active" type="button" data-view="data">Dữ liệu SAP</button>
       <button class="nav-item" type="button" data-view="imports">Lịch sử import</button>
+      <button class="nav-item" id="settingsNav" type="button" data-view="settings">Cài đặt</button>
     </nav>
     <div class="system-health" id="systemHealth" title="Trạng thái kết nối">
       <span class="health-dot"></span><span>Đang kiểm tra</span>
@@ -201,7 +202,7 @@
           <p class="heading-copy">Kiểm tra file nguồn, kết quả insert/update và lỗi xử lý.</p>
         </div>
       </div>
-      <section class="upload-card" aria-labelledby="uploadHeading">
+      <section id="uploadCard" class="upload-card" aria-labelledby="uploadHeading" hidden>
         <div>
           <p class="section-kicker">Upload có kiểm soát</p>
           <h2 id="uploadHeading">Đưa snapshot Excel lên hệ thống</h2>
@@ -213,7 +214,7 @@
           <button id="uploadAndImport" class="primary-button" type="submit">Upload &amp; Import</button>
         </form>
       </section>
-      <section class="manual-import-card" aria-labelledby="manualImportHeading">
+      <section id="manualImportCard" class="manual-import-card" aria-labelledby="manualImportHeading" hidden>
         <div class="manual-import-icon" aria-hidden="true">↻</div>
         <div class="manual-import-copy">
           <p class="section-kicker">Chạy thử ETL</p>
@@ -259,6 +260,77 @@
             <button class="page-button" id="nextImportPage" type="button">→</button>
           </div>
         </footer>
+      </section>
+    </section>
+
+    <section id="settingsView" class="view" aria-labelledby="settingsHeading" hidden>
+      <div class="page-heading compact-heading">
+        <div>
+          <p class="eyebrow">Thiết lập an toàn · Giai đoạn 5</p>
+          <h1 id="settingsHeading">Cài đặt hệ thống</h1>
+          <p class="heading-copy">Thiết lập dành cho quản trị viên, không cần chỉnh sửa file <code>.env</code>.</p>
+        </div>
+      </div>
+
+      <section id="firstRunGuide" class="first-run-guide" hidden aria-labelledby="firstRunHeading">
+        <div class="guide-number">1</div>
+        <div>
+          <p class="section-kicker">Thiết lập lần đầu</p>
+          <h2 id="firstRunHeading">Tạo mật khẩu quản trị</h2>
+          <p>Mật khẩu bảo vệ API key và các cài đặt nhạy cảm. Mật khẩu chỉ được băm trong database, hệ thống không thể đọc lại mật khẩu gốc.</p>
+          <ol class="setup-steps">
+            <li>Tạo mật khẩu mạnh bên dưới.</li>
+            <li>Đăng nhập trang Cài đặt.</li>
+            <li>Nhập và kiểm tra API key nếu cần dùng AI.</li>
+          </ol>
+        </div>
+      </section>
+
+      <div id="adminAuthPanel" class="settings-grid">
+        <form id="adminSetupForm" class="settings-card" hidden>
+          <p class="section-kicker">Bước 1 / 2</p>
+          <h2>Tạo tài khoản quản trị</h2>
+          <p>Dùng tối thiểu 12 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</p>
+          <label class="field"><span>Mật khẩu mới</span><input id="setupPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+          <label class="field"><span>Nhập lại mật khẩu</span><input id="setupPasswordConfirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+          <button class="primary-button" type="submit">Tạo quản trị viên</button>
+        </form>
+
+        <form id="adminLoginForm" class="settings-card" hidden>
+          <p class="section-kicker">Khu vực quản trị</p>
+          <h2>Đăng nhập</h2>
+          <p>Đăng nhập để xem trạng thái và thay đổi cấu hình AI.</p>
+          <label class="field"><span>Mật khẩu quản trị</span><input id="loginPassword" type="password" maxlength="128" autocomplete="current-password" required></label>
+          <button class="primary-button" type="submit">Đăng nhập</button>
+        </form>
+      </div>
+
+      <section id="adminSettingsPanel" class="settings-card admin-settings-card" hidden>
+        <header class="settings-card-header">
+          <div><p class="section-kicker">Bước 2 / 2</p><h2>Generative AI</h2></div>
+          <button id="adminLogout" class="text-button" type="button">Đăng xuất</button>
+        </header>
+        <div class="security-note"><strong>API key được bảo vệ</strong><span>Key được mã hóa phía server, không bao giờ được trả lại trình duyệt hoặc ghi vào log.</span></div>
+        <div class="ai-settings-status">
+          <span id="adminAiStatusDot" class="settings-status-dot"></span>
+          <div><strong id="adminAiStatusText">Đang kiểm tra…</strong><small id="adminAiModelText"></small></div>
+        </div>
+        <form id="aiSettingsForm">
+          <label class="field">
+            <span>API key mới</span>
+            <div class="secret-input-row">
+              <input id="adminApiKey" type="password" maxlength="500" autocomplete="off" placeholder="Dán API key tại đây">
+              <button id="toggleApiKey" class="secondary-button" type="button">Hiện</button>
+            </div>
+            <small>Để trống khi chỉ muốn kiểm tra key đã lưu. Giá trị cũ không được hiển thị lại.</small>
+          </label>
+          <div id="apiKeyFeedback" class="settings-feedback" aria-live="polite"></div>
+          <div class="settings-actions">
+            <button id="testApiKey" class="secondary-button" type="button">Kiểm tra kết nối</button>
+            <button class="primary-button" type="submit">Lưu API key</button>
+            <button id="removeApiKey" class="danger-button" type="button">Xóa API key</button>
+          </div>
+        </form>
       </section>
     </section>
   </main>

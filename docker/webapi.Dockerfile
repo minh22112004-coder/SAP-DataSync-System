@@ -20,6 +20,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /app/publish ./
 COPY database/scripts/ ./database/scripts/
+RUN mkdir -p /keys && chown -R app:app /keys
 
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080

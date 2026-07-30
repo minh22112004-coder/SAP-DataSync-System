@@ -307,3 +307,25 @@ public sealed record AiFilterResponse(
     string Provider,
     string Model,
     bool RequiresConfirmation);
+
+public sealed record AdminStatus(
+    bool SetupRequired,
+    bool Authenticated,
+    bool AiConfigured,
+    string? ApiKeyMasked,
+    string Provider,
+    string Model);
+
+public sealed record AdminSetupRequest(string Password);
+
+public sealed record AdminLoginRequest(string Password);
+
+public sealed record AiApiKeyUpdateRequest(string ApiKey);
+
+public sealed record AiApiKeyTestRequest(string? ApiKey);
+
+public sealed record AiConnectionTestResponse(
+    bool Success,
+    string Provider,
+    string Model,
+    string Message);

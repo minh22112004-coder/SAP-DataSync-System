@@ -231,6 +231,34 @@ td.customer-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; 
 .audit-empty.compact { min-height: 60px; }
 .toast { position: fixed; right: 22px; bottom: 22px; z-index: 50; max-width: min(420px, calc(100% - 44px)); border-radius: 10px; padding: 13px 16px; color: #fff; background: var(--navy); box-shadow: 0 14px 40px rgba(12,30,49,.24); }
 
+.nav-item.attention::after { content: "!"; display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; color: #fff; background: #d97706; font-size: 10px; font-weight: 900; }
+.first-run-guide { display: grid; grid-template-columns: auto 1fr; gap: 18px; margin-bottom: 20px; padding: 22px; border: 1px solid #f1cf81; border-radius: 14px; background: #fff8e8; }
+.first-run-guide h2, .settings-card h2 { margin: 3px 0 8px; color: var(--navy); }
+.first-run-guide p, .settings-card > p { margin: 0; color: var(--muted); line-height: 1.6; }
+.guide-number { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; color: #fff; background: #d97706; font-size: 18px; font-weight: 850; }
+.setup-steps { margin: 14px 0 0; padding-left: 20px; color: #6b4c0e; line-height: 1.7; }
+.settings-grid { display: grid; grid-template-columns: minmax(0, 620px); gap: 20px; }
+.settings-card { padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 8px 26px rgba(15,39,63,.05); }
+.settings-card .field { margin: 18px 0; }
+.settings-card .field small { color: var(--muted); font-weight: 500; line-height: 1.5; }
+.admin-settings-card { max-width: 850px; }
+.settings-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.security-note { display: grid; gap: 4px; margin: 18px 0; padding: 14px 16px; border: 1px solid #bde4d4; border-radius: 10px; color: #116149; background: #edf9f4; }
+.security-note span { font-size: 12px; line-height: 1.5; }
+.ai-settings-status { display: flex; align-items: center; gap: 11px; margin: 18px 0; padding: 15px 16px; border-radius: 10px; background: #f5f7fa; }
+.ai-settings-status div { display: grid; gap: 3px; }
+.ai-settings-status small { color: var(--muted); }
+.settings-status-dot { width: 12px; height: 12px; border-radius: 50%; background: #94a3b8; box-shadow: 0 0 0 4px #e2e8f0; }
+.settings-status-dot.configured { background: #12a875; box-shadow: 0 0 0 4px #d9f4e9; }
+.secret-input-row { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+.danger-button { min-height: 42px; border: 1px solid #efb5ae; border-radius: 9px; padding: 10px 18px; color: #9d2b21; background: #fff5f4; font-weight: 750; }
+.danger-button:hover { background: #fee8e6; }
+.danger-button:disabled { cursor: not-allowed; opacity: .45; }
+.settings-feedback { min-height: 21px; border-radius: 8px; font-size: 12px; font-weight: 700; }
+.settings-feedback[data-state="success"] { padding: 10px 12px; color: #087653; background: #e7f7f0; }
+.settings-feedback[data-state="error"] { padding: 10px 12px; color: #9d2b21; background: #fee8e6; }
+
 @media (max-width: 1120px) {
   .primary-filters { grid-template-columns: repeat(3, 1fr); }
   .field-wide { grid-column: span 2; }
@@ -265,6 +293,8 @@ td.customer-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; 
   .manual-import-button { grid-column: 1 / -1; width: 100%; }
   .upload-card, .upload-form { grid-template-columns: 1fr; display: grid; align-items: stretch; }
   .upload-picker input { width: 100%; }
+  .settings-actions { align-items: stretch; flex-direction: column; }
+  .settings-actions button { width: 100%; }
 }
 @media (max-width: 480px) {
   h1 { font-size: 31px; }
@@ -284,5 +314,7 @@ td.customer-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; 
   .change-new::before { content: "Mới: "; color: var(--muted); font-weight: 700; }
   .change-arrow { display: none; }
   .dialog-header, .detail-content { padding: 18px; }
+  .first-run-guide { grid-template-columns: 1fr; }
+  .secret-input-row { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; } }

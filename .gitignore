@@ -16,6 +16,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.tools/
+artifacts/
 *.py[cod]
 
 # Local planning and summary documents

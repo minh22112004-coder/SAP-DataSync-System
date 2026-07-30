@@ -12,6 +12,8 @@ const state = {
   aiEnabled: false,
   aiMaxRecords: 0,
   pendingAiQuery: null,
+  adminStatus: null,
+  adminSetupPrompted: false,
 };
 
 let manualImportTimer;
@@ -23,7 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   checkHealth();
   loadAiStatus();
-  if (location.hash === "#imports") switchView("imports");
+  loadAdminStatus(true);
+  if (["#imports", "#settings"].includes(location.hash)) switchView(location.hash.slice(1));
   loadFilterOptions().finally(loadSapData);
 });
 
@@ -75,6 +78,13 @@ function bindEvents() {
     const button = event.target.closest("[data-import-id]");
     if (button) openImportDetail(button.dataset.importId);
   });
+  $("#adminSetupForm").addEventListener("submit", setupAdmin);
+  $("#adminLoginForm").addEventListener("submit", loginAdmin);
+  $("#adminLogout").addEventListener("click", logoutAdmin);
+  $("#aiSettingsForm").addEventListener("submit", saveAiApiKey);
+  $("#testApiKey").addEventListener("click", testAiApiKey);
+  $("#removeApiKey").addEventListener("click", removeAiApiKey);
+  $("#toggleApiKey").addEventListener("click", toggleApiKeyVisibility);
   $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => $("#detailDialog").close()));
   $("#detailDialog").addEventListener("click", event => {
     if (event.target === event.currentTarget) event.currentTarget.close();
@@ -101,6 +111,17 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+async function adminApi(path, options = {}) {
+  return api(path, {
+    ...options,
+    headers: {
+      "X-SapDataSync-Admin": "1",
+      ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+}
+
 async function checkHealth() {
   const health = $("#systemHealth");
   try {
@@ -125,6 +146,170 @@ async function loadAiStatus() {
     state.aiEnabled = false;
     $("#aiPlanner").hidden = true;
   }
+}
+
+async function loadAdminStatus(autoOpenSetup = false) {
+  try {
+    const status = await api("/api/admin/status");
+    state.adminStatus = status;
+    renderAdminStatus(status);
+    if (autoOpenSetup && status.setupRequired && !state.adminSetupPrompted && !location.hash) {
+      state.adminSetupPrompted = true;
+      switchView("settings");
+      showToast("Hãy hoàn tất thiết lập quản trị lần đầu.");
+    }
+  } catch (error) {
+    setAdminFeedback(error.message, "error");
+  }
+}
+
+function renderAdminStatus(status) {
+  const setupRequired = Boolean(status.setupRequired);
+  const authenticated = Boolean(status.authenticated);
+  $("#firstRunGuide").hidden = !setupRequired;
+  $("#adminAuthPanel").hidden = authenticated;
+  $("#adminSetupForm").hidden = !setupRequired || authenticated;
+  $("#adminLoginForm").hidden = setupRequired || authenticated;
+  $("#adminSettingsPanel").hidden = !authenticated;
+  $("#uploadCard").hidden = !authenticated;
+  $("#manualImportCard").hidden = !authenticated;
+  $("#settingsNav").classList.toggle("attention", setupRequired);
+
+  if (!authenticated) return;
+  const configured = Boolean(status.aiConfigured);
+  $("#adminAiStatusDot").classList.toggle("configured", configured);
+  $("#adminAiStatusText").textContent = configured
+    ? `AI đã được cấu hình (${status.apiKeyMasked || "đã ẩn"})`
+    : "AI đang tắt — chưa có API key";
+  $("#adminAiModelText").textContent = `${status.provider} · ${status.model}`;
+  $("#removeApiKey").disabled = !configured;
+  $("#adminApiKey").placeholder = configured
+    ? "Nhập key mới để thay thế key đang lưu"
+    : "Dán API key tại đây";
+}
+
+async function setupAdmin(event) {
+  event.preventDefault();
+  const password = $("#setupPassword").value;
+  if (password !== $("#setupPasswordConfirm").value) {
+    showToast("Hai lần nhập mật khẩu chưa giống nhau.");
+    return;
+  }
+
+  await runAdminAction(event.submitter, "Đang tạo…", async () => {
+    const status = await adminApi("/api/admin/setup", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    });
+    $("#adminSetupForm").reset();
+    state.adminStatus = status;
+    renderAdminStatus(status);
+    showToast("Đã tạo tài khoản quản trị. Hãy cấu hình API key nếu cần dùng AI.");
+  });
+}
+
+async function loginAdmin(event) {
+  event.preventDefault();
+  const password = $("#loginPassword").value;
+  await runAdminAction(event.submitter, "Đang đăng nhập…", async () => {
+    const status = await adminApi("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    });
+    $("#adminLoginForm").reset();
+    state.adminStatus = status;
+    renderAdminStatus(status);
+    showToast("Đăng nhập quản trị thành công.");
+  });
+}
+
+async function logoutAdmin() {
+  try {
+    await adminApi("/api/admin/logout", { method: "POST" });
+    await loadAdminStatus();
+    $("#adminApiKey").value = "";
+    setAdminFeedback("Đã đăng xuất.", "success");
+  } catch (error) {
+    setAdminFeedback(error.message, "error");
+  }
+}
+
+async function saveAiApiKey(event) {
+  event.preventDefault();
+  const apiKey = $("#adminApiKey").value.trim();
+  if (!apiKey) {
+    setAdminFeedback("Hãy nhập API key mới trước khi lưu.", "error");
+    return;
+  }
+
+  await runAdminAction(event.submitter, "Đang lưu…", async () => {
+    const status = await adminApi("/api/admin/settings/ai", {
+      method: "PUT",
+      body: JSON.stringify({ apiKey }),
+    });
+    $("#adminApiKey").value = "";
+    state.adminStatus = status;
+    renderAdminStatus(status);
+    setAdminFeedback("Đã mã hóa và lưu API key phía server.", "success");
+    await loadAiStatus();
+  });
+}
+
+async function testAiApiKey() {
+  const button = $("#testApiKey");
+  await runAdminAction(button, "Đang kiểm tra…", async () => {
+    const result = await adminApi("/api/admin/settings/ai/test", {
+      method: "POST",
+      body: JSON.stringify({ apiKey: $("#adminApiKey").value.trim() || null }),
+    });
+    setAdminFeedback(result.message, "success");
+  });
+}
+
+async function removeAiApiKey() {
+  if (!window.confirm("Xóa API key đã lưu và tắt toàn bộ chức năng AI?")) return;
+  const button = $("#removeApiKey");
+  await runAdminAction(button, "Đang xóa…", async () => {
+    const status = await adminApi("/api/admin/settings/ai", { method: "DELETE" });
+    state.adminStatus = status;
+    renderAdminStatus(status);
+    setAdminFeedback("Đã xóa API key. Các chức năng dữ liệu thông thường vẫn hoạt động.", "success");
+    await loadAiStatus();
+  });
+}
+
+function toggleApiKeyVisibility() {
+  const input = $("#adminApiKey");
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  $("#toggleApiKey").textContent = show ? "Ẩn" : "Hiện";
+}
+
+async function runAdminAction(button, busyText, action) {
+  const originalText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = busyText;
+  }
+  setAdminFeedback("", "");
+  try {
+    await action();
+  } catch (error) {
+    setAdminFeedback(error.message, "error");
+    showToast(error.message);
+  } finally {
+    if (button) {
+      button.disabled = button.id === "removeApiKey" && !state.adminStatus?.aiConfigured;
+      button.textContent = originalText;
+    }
+  }
+}
+
+function setAdminFeedback(message, stateName) {
+  const feedback = $("#apiKeyFeedback");
+  if (!feedback) return;
+  feedback.textContent = message || "";
+  feedback.dataset.state = stateName || "";
 }
 
 async function loadFilterOptions() {
@@ -447,6 +632,7 @@ function switchView(view) {
     loadImportLogs();
     loadManualImportStatus();
   }
+  if (view === "settings") loadAdminStatus();
   history.replaceState(null, "", `#${view}`);
 }
 
@@ -488,7 +674,7 @@ async function startManualImport() {
   button.disabled = true;
   button.textContent = "Đang gửi yêu cầu…";
   try {
-    const status = await api("/api/imports/run", { method: "POST" });
+    const status = await adminApi("/api/imports/run", { method: "POST" });
     renderManualImportStatus(status);
     scheduleManualImportPoll();
   } catch (error) {
@@ -520,11 +706,11 @@ async function uploadAndImport(event) {
   try {
     const form = new FormData();
     form.append("file", file);
-    const uploaded = await api("/api/uploads", { method: "POST", body: form });
+    const uploaded = await adminApi("/api/uploads", { method: "POST", body: form });
     $("#uploadStatus").textContent = uploaded.alreadyExisted
       ? `File đã có trên máy chủ (${uploaded.storedFileName}). Đang yêu cầu ETL kiểm tra…`
       : `Đã lưu ${uploaded.storedFileName}. Đang yêu cầu ETL import…`;
-    const status = await api("/api/imports/run", { method: "POST" });
+    const status = await adminApi("/api/imports/run", { method: "POST" });
     renderManualImportStatus(status);
     scheduleManualImportPoll();
     input.value = "";
