@@ -1,6 +1,8 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 using SapDataSync.WebApi.Data;
 using SapDataSync.WebApi.Infrastructure;
 using SapDataSync.WebApi.Models;
@@ -16,6 +18,22 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<DatabaseBootstrapper>();
 builder.Services.AddScoped<SapDataQueryService>();
 builder.Services.AddSingleton<UploadService>();
+builder.Services.AddHttpClient<AiPlanningService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(
+        Math.Clamp(builder.Configuration.GetValue("AI:TimeoutSeconds", 30), 5, 120));
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("ai", limiter =>
+    {
+        limiter.PermitLimit = Math.Clamp(builder.Configuration.GetValue("AI:RequestsPerMinute", 5), 1, 30);
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
+});
 builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = uploadMaxBytes;
@@ -30,6 +48,7 @@ builder.Services.AddHttpClient<ManualImportService>(client =>
 var app = builder.Build();
 
 app.UseExceptionHandler();
+app.UseRateLimiter();
 
 if (app.Configuration.GetValue("Database:Initialize", true))
 {
@@ -104,6 +123,112 @@ app.MapGet("/api/sap-data/{id:long}", async (
         })
         : Results.Ok(item);
 });
+
+app.MapGet("/api/ai/status", (AiPlanningService aiService) =>
+    Results.Ok(aiService.GetStatus()));
+
+app.MapPost("/api/ai/filters", async (
+    AiFilterRequest request,
+    SapDataQueryService dataService,
+    AiPlanningService aiService,
+    CancellationToken cancellationToken) =>
+{
+    var validation = request.Validate();
+    if (validation is not null)
+    {
+        return Results.ValidationProblem(validation);
+    }
+
+    if (!aiService.Enabled)
+    {
+        return Results.Problem(
+            title: "AI chưa được cấu hình",
+            detail: "Hãy đặt AI_ENABLED=true và AI_API_KEY trong file .env local.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    try
+    {
+        var response = await aiService.InterpretFilterAsync(request, cancellationToken);
+        var domainValidation = ValidateAiFilterValues(
+            response.Query,
+            await dataService.GetFilterOptionsAsync(cancellationToken));
+        return domainValidation is null
+            ? Results.Ok(response)
+            : Results.ValidationProblem(domainValidation);
+    }
+    catch (AiProviderException exception)
+    {
+        return Results.Problem(
+            title: "Không thể tạo bộ lọc AI",
+            detail: exception.Message,
+            statusCode: (int)exception.StatusCode);
+    }
+    catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+    {
+        return Results.Problem(
+            title: "AI phản hồi quá thời gian",
+            detail: "Hãy thử lại với câu hỏi ngắn hơn.",
+            statusCode: StatusCodes.Status504GatewayTimeout);
+    }
+    catch (HttpRequestException)
+    {
+        return Results.Problem(
+            title: "Không thể kết nối AI Provider",
+            detail: "Kiểm tra kết nối Internet, AI_BASE_URL hoặc thử lại sau.",
+            statusCode: StatusCodes.Status502BadGateway);
+    }
+}).RequireRateLimiting("ai");
+
+app.MapPost("/api/ai/plans", async (
+    AiPlanRequest request,
+    SapDataQueryService dataService,
+    AiPlanningService aiService,
+    CancellationToken cancellationToken) =>
+{
+    var validation = request.Validate();
+    if (validation is not null)
+    {
+        return Results.ValidationProblem(validation);
+    }
+
+    if (!aiService.Enabled)
+    {
+        return Results.Problem(
+            title: "AI chưa được cấu hình",
+            detail: "Hãy đặt AI_ENABLED=true và AI_API_KEY trong file .env local.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    try
+    {
+        var data = await dataService.GetSapDataAsync(
+            CreateAiQuery(request.Query!, aiService.MaxRecords),
+            cancellationToken);
+        return Results.Ok(await aiService.GeneratePlanAsync(request, data, cancellationToken));
+    }
+    catch (AiProviderException exception)
+    {
+        return Results.Problem(
+            title: "Không thể tạo kế hoạch AI",
+            detail: exception.Message,
+            statusCode: (int)exception.StatusCode);
+    }
+    catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+    {
+        return Results.Problem(
+            title: "AI phản hồi quá thời gian",
+            detail: "Hãy thử lại với bộ lọc hẹp hơn.",
+            statusCode: StatusCodes.Status504GatewayTimeout);
+    }
+    catch (HttpRequestException)
+    {
+        return Results.Problem(
+            title: "Không thể kết nối AI Provider",
+            detail: "Kiểm tra kết nối Internet, AI_BASE_URL hoặc thử lại sau.",
+            statusCode: StatusCodes.Status502BadGateway);
+    }
+}).RequireRateLimiting("ai");
 
 app.MapGet("/api/import-logs", async (
     [AsParameters] ImportLogQuery query,
@@ -229,3 +354,59 @@ app.MapPost("/api/uploads", async (
 app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
+
+static SapDataQuery CreateAiQuery(SapDataQuery source, int maxRecords) => new()
+{
+    Page = 1,
+    PageSize = maxRecords,
+    Search = source.Search,
+    Product = source.Product,
+    SalesOrganization = source.SalesOrganization,
+    BusinessScenario = source.BusinessScenario,
+    SiStatus = source.SiStatus,
+    SalesOffice = source.SalesOffice,
+    PlantCode = source.PlantCode,
+    SiId = source.SiId,
+    Customer = source.Customer,
+    OilSc = source.OilSc,
+    OilSo = source.OilSo,
+    OilPo = source.OilPo,
+    CreatedFrom = source.CreatedFrom,
+    CreatedTo = source.CreatedTo,
+    SortBy = source.SortBy,
+    SortDirection = source.SortDirection
+};
+
+static Dictionary<string, string[]>? ValidateAiFilterValues(SapDataQuery query, FilterOptions options)
+{
+    var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+    ValidateKnownValue(nameof(query.Product), query.Product, options.Products);
+    ValidateKnownValue(nameof(query.SalesOrganization), query.SalesOrganization, options.SalesOrganizations);
+    ValidateKnownValue(nameof(query.SiStatus), query.SiStatus, options.SiStatuses);
+    ValidateKnownValue(nameof(query.SalesOffice), query.SalesOffice, options.SalesOffices);
+    ValidateKnownValue(nameof(query.PlantCode), query.PlantCode, options.PlantCodes);
+
+    var scenarioCodes = new HashSet<string>(["PDO", "PWS", "SDS", "SWS"], StringComparer.OrdinalIgnoreCase);
+    foreach (var scenario in (query.BusinessScenario ?? string.Empty)
+                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        if (!scenarioCodes.Contains(scenario) &&
+            !options.BusinessScenarios.Any(value => value.Equals(scenario, StringComparison.OrdinalIgnoreCase)))
+        {
+            errors[nameof(query.BusinessScenario)] = ["AI đề xuất Business Scenario không tồn tại trong dữ liệu."];
+            break;
+        }
+    }
+
+    return errors.Count == 0 ? null : errors;
+
+    void ValidateKnownValue(string field, string? value, IReadOnlyList<string> allowed)
+    {
+        if (!string.IsNullOrWhiteSpace(value) &&
+            !allowed.Any(item => item.Equals(value, StringComparison.OrdinalIgnoreCase)))
+        {
+            errors[field] = [$"AI đề xuất {field} không tồn tại trong dữ liệu."];
+        }
+    }
+}

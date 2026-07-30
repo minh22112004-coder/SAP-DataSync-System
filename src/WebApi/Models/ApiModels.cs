@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SapDataSync.WebApi.Models;
 
 public sealed class SapDataQuery
@@ -207,3 +209,101 @@ public sealed record ManualImportStatus(
     DateTimeOffset? CompletedAt,
     int? ExitCode,
     string Message);
+
+public sealed class AiPlanRequest
+{
+    public string? Goal { get; init; }
+    public SapDataQuery? Query { get; init; } = new();
+
+    public Dictionary<string, string[]>? Validate()
+    {
+        var errors = Query?.Validate() ?? new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        if (Query is null)
+        {
+            errors[nameof(Query)] = ["Bộ lọc dữ liệu là bắt buộc."];
+        }
+        if (Goal?.Length > 500)
+        {
+            errors[nameof(Goal)] = ["Mục tiêu kế hoạch không được vượt quá 500 ký tự."];
+        }
+
+        return errors.Count == 0 ? null : errors;
+    }
+}
+
+public sealed record AiStatus(bool Enabled, string Provider, string Model, int MaxRecords);
+
+public sealed class AiGeneratedPlan
+{
+    public string Title { get; init; } = string.Empty;
+    public string ExecutiveSummary { get; init; } = string.Empty;
+    public List<AiPlanAction> Actions { get; set; } = [];
+    public List<string> Risks { get; set; } = [];
+    public List<string> Assumptions { get; set; } = [];
+}
+
+public sealed record AiPlanAction(
+    int Priority,
+    string Action,
+    string Reason,
+    List<string> RelatedShippingInstructionIds);
+
+public sealed record AiPlanResponse(
+    AiGeneratedPlan Plan,
+    string Provider,
+    string Model,
+    int AnalyzedRecords,
+    long TotalMatchingRecords,
+    DateTimeOffset GeneratedAt,
+    string Disclaimer);
+
+public sealed class AiFilterRequest
+{
+    public string Question { get; init; } = string.Empty;
+
+    public Dictionary<string, string[]>? Validate()
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(Question))
+        {
+            errors[nameof(Question)] = ["Hãy nhập câu hỏi cần chuyển thành bộ lọc."];
+        }
+        else if (Question.Trim().Length > 500)
+        {
+            errors[nameof(Question)] = ["Câu hỏi không được vượt quá 500 ký tự."];
+        }
+
+        return errors.Count == 0 ? null : errors;
+    }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class AiFilterDraft
+{
+    public string? Product { get; init; }
+    public string? SalesOrganization { get; init; }
+    public List<string> BusinessScenarios { get; init; } = [];
+    public string? SiStatus { get; init; }
+    public string? SalesOffice { get; init; }
+    public string? PlantCode { get; init; }
+    public string? SiId { get; init; }
+    public string? Customer { get; init; }
+    public string? OilSc { get; init; }
+    public string? OilSo { get; init; }
+    public string? OilPo { get; init; }
+    public string? Search { get; init; }
+    public string? CreatedFrom { get; init; }
+    public string? CreatedTo { get; init; }
+    public string? SortBy { get; init; }
+    public string? SortDirection { get; init; }
+    public string Summary { get; init; } = string.Empty;
+    public List<string> Assumptions { get; init; } = [];
+}
+
+public sealed record AiFilterResponse(
+    SapDataQuery Query,
+    string Summary,
+    IReadOnlyList<string> Assumptions,
+    string Provider,
+    string Model,
+    bool RequiresConfirmation);

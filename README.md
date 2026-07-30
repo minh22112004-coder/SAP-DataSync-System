@@ -20,11 +20,10 @@ Giai đoạn 1 cung cấp nền tảng Docker và database. Giai đoạn 2 sử 
 Docker Compose
 ├── web-api        ASP.NET Core
 ├── etl-worker     Python — chạy ETL mỗi ngày
-├── ai-service     Python — bổ sung sau
 └── sqlserver      SQL Server
 ```
 
-Python ETL dùng APScheduler, `openpyxl(read_only=True)`, `pyodbc`, `hashlib` và stored procedure SQL. Pandas/Polars chỉ cần khi có yêu cầu biến đổi dữ liệu; SQLAlchemy là tùy chọn. Importer C# được giữ trong source làm bản tham chiếu nhưng không còn chạy trong Docker Compose.
+Python ETL dùng APScheduler, `openpyxl(read_only=True)`, `pyodbc`, `hashlib` và stored procedure SQL. ASP.NET Web API gọi Groq API trực tiếp cho Giai đoạn 4 nên không cần AI container hoặc mô hình local. Importer C# được giữ trong source làm bản tham chiếu nhưng không còn chạy trong Docker Compose.
 
 ## Yêu cầu
 
@@ -77,6 +76,28 @@ Các cấu hình ETL Worker trong `.env`:
 - `ETL_BATCH_SIZE`: số dòng mỗi lần bulk insert.
 - `ETL_RUN_ON_STARTUP`: đặt `true` nếu muốn chạy thêm một lần khi container khởi động.
 
+### Generative AI tạo kế hoạch — Giai đoạn 4
+
+AI mặc định bị tắt để repository chạy được mà không cần API key. Tạo Groq API key, sau đó đặt trong `.env` local:
+
+```env
+AI_ENABLED=true
+AI_API_KEY=your-groq-api-key
+AI_MODEL=llama-3.3-70b-versatile
+AI_MAX_RECORDS=50
+AI_REQUESTS_PER_MINUTE=5
+```
+
+Khởi động lại Web API sau khi đổi cấu hình:
+
+```powershell
+docker compose up -d --build web-api
+```
+
+Web App sẽ hiện khối Generative AI với hai chức năng: chuyển câu hỏi tự nhiên thành bộ lọc nháp để người dùng xác nhận, và tạo kế hoạch từ dữ liệu đang lọc. Backend chỉ gửi tối đa `AI_MAX_RECORDS` bản ghi thuộc bộ lọc hiện tại, dùng allowlist trường và mặc định loại `Customer Name` cùng 149 trường chi tiết. API key chỉ nằm ở server; không commit `.env` và không đưa key vào JavaScript.
+
+Kế hoạch AI chỉ là đề xuất, không có quyền sửa SAP, Excel hoặc SQL. Trước khi gửi dữ liệu SAP thật tới dịch vụ bên ngoài phải có chấp thuận của chủ dữ liệu; bản demo nên dùng dữ liệu đã ẩn danh. Xem thiết kế và checklist tại `Ke_hoach_Giai_doan_4_Generative_AI.md`.
+
 ## Khởi động
 
 ```powershell
@@ -108,6 +129,8 @@ GET /api/import-logs/{id}
 GET /api/import-logs/{id}/changes
 POST /api/imports/run
 GET /api/imports/status
+GET /api/ai/status
+POST /api/ai/plans
 ```
 
 `Created Date` ánh xạ tới `SI Created on`; `OIL SC` ánh xạ tới `OIL Sales`.
@@ -247,6 +270,22 @@ Khi các container đang chạy:
 
 Script xác nhận Web App, phân trang, bộ lọc metadata, chi tiết đủ 149 trường, lịch sử import và lỗi HTTP 400 cho tham số không hợp lệ.
 
+## Kiểm tra Giai đoạn 4
+
+Không cần API key thật. Bộ kiểm thử tạo một AI Provider giả lập tạm thời trong mạng Docker để kiểm tra kế hoạch JSON, bộ lọc ngôn ngữ tự nhiên, prompt injection, schema sai, HTTP 429, timeout và rate limit. Test cũng xác nhận payload giới hạn 50 dòng, không có `Customer Name`, đồng thời so sánh dấu vân tay Staging/SapData/ImportLog/ChangeLog và SHA-256 của Excel trước/sau. Sau khi chạy, script dừng mock và khôi phục Web API về cấu hình `.env`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\verify-stage4.ps1
+```
+
+Kiểm thử bằng Groq thật chỉ thực hiện sau khi người nhận tự đặt `AI_API_KEY` trong `.env` và dùng dữ liệu demo/đã ẩn danh.
+
+Sau khi đã cấu hình key local, chạy bài kiểm thử live tối thiểu sau. Script chỉ chọn một Shipping Instruction, không hiển thị API key và vẫn kiểm tra database/file Excel không thay đổi:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\verify-stage4-live.ps1
+```
+
 ### Chạy import thủ công
 
 1. Đặt file Excel cần kiểm tra vào `data/source` với tên khớp `SAP_FILE_PATTERN`.
@@ -279,5 +318,5 @@ compose.yaml
 - [x] Giai đoạn 2A: hoàn thành và kiểm chứng luồng import bằng C#/.NET.
 - [x] Giai đoạn 2B: chuyển sang Python ETL Worker và kiểm thử tương đương.
 - [x] Giai đoạn 3: Web API và Web App dữ liệu.
-- [ ] Giai đoạn 4: Generative AI tạo kế hoạch — tùy chọn.
+- [ ] Giai đoạn 4: đã hoàn tất code 4A/4B, kiểm thử mock và Groq thật; chờ kiểm tra giao diện thực tế và người dùng nghiệp vụ nghiệm thu 10 tình huống mẫu.
 - [ ] Giai đoạn 5: kiểm thử, đóng gói và bàn giao.

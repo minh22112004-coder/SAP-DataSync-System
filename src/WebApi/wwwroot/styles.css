@@ -89,6 +89,39 @@ kbd { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); bo
 .secondary-button { color: var(--navy); background: #eaf0f5; }
 
 .data-card { overflow: hidden; }
+.ai-planner { margin-bottom: 20px; padding: 22px; border: 1px solid #c8d8f2; border-radius: 16px; background: linear-gradient(135deg, #f6f9ff, #fff); box-shadow: var(--shadow); }
+.ai-planner-header { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
+.ai-planner-header h2 { margin: 2px 0 6px; font-size: 20px; }
+.ai-planner-header p:not(.section-kicker) { margin: 0; color: var(--muted); font-size: 13px; }
+.ai-model-badge { flex: none; padding: 6px 10px; border: 1px solid #b9caea; border-radius: 999px; color: #36578c; background: #eef4ff; font-size: 12px; font-weight: 700; }
+.ai-filter-assistant { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 14px; margin-top: 18px; padding: 16px; border: 1px solid #dbe4f3; border-radius: 12px; background: rgba(255,255,255,.78); }
+.ai-filter-question input { width: 100%; }
+.ai-filter-preview { margin-top: 12px; padding: 16px; border: 1px solid #b9caea; border-radius: 12px; background: #fff; }
+.ai-filter-preview-header { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.ai-filter-preview-header strong { display: block; margin-top: 3px; }
+.ai-confirmation-badge { flex: none; padding: 5px 9px; border-radius: 999px; color: #765a18; background: #fff3c4; font-size: 11px; font-weight: 800; }
+.ai-filter-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.ai-filter-chips span { padding: 6px 9px; border-radius: 8px; color: #36516f; background: #edf3fa; font-size: 12px; }
+.ai-filter-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 14px; }
+.ai-planner-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 14px; margin-top: 18px; }
+.ai-goal-field textarea { width: 100%; resize: vertical; min-height: 78px; font: inherit; }
+.ai-generate-button { min-height: 44px; margin-bottom: 1px; }
+.ai-scope-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+.ai-plan-result { margin-top: 18px; padding-top: 18px; border-top: 1px solid #dbe4f3; }
+.ai-plan-loading { display: flex; gap: 10px; align-items: center; color: var(--muted); }
+.ai-plan-title { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.ai-plan-title h3 { margin: 2px 0 0; font-size: 21px; }
+.ai-plan-title > span { color: var(--muted); font-size: 12px; }
+.ai-plan-summary { line-height: 1.65; }
+.ai-action-list { display: grid; gap: 10px; padding: 0; list-style: none; }
+.ai-action-list li { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 14px; border: 1px solid #dbe4f3; border-radius: 12px; background: #fff; }
+.ai-action-list p { margin: 5px 0; color: var(--muted); line-height: 1.5; }
+.ai-action-list small { color: #52657f; }
+.ai-priority { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: #fff; background: var(--navy); font-size: 12px; font-weight: 800; }
+.ai-notes { margin-top: 14px; }
+.ai-notes h4 { margin: 0 0 6px; }
+.ai-notes ul { margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.55; }
+.ai-disclaimer { margin-top: 16px; padding: 10px 12px; border-radius: 9px; color: #765a18; background: #fff8df; font-size: 12px; }
 .card-toolbar { padding: 20px 22px; border-bottom: 1px solid var(--line); }
 .toolbar-controls, .import-search { display: flex; align-items: end; gap: 9px; }
 .toolbar-controls label { display: flex; align-items: center; gap: 8px; }
@@ -204,6 +237,9 @@ td.customer-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; 
   .filter-grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 760px) {
+  .ai-planner-header, .ai-plan-title { display: grid; }
+  .ai-planner-controls, .ai-filter-assistant { grid-template-columns: 1fr; }
+  .ai-filter-preview-header { display: grid; }
   .topbar { height: auto; min-height: 68px; padding: 10px 16px; gap: 8px; flex-wrap: wrap; }
   .brand { min-width: 0; margin-right: auto; }
   .brand small, .system-health span:last-child { display: none; }

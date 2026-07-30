@@ -34,6 +34,14 @@ services:
       Uploads__Enabled: ${WEB_UPLOAD_ENABLED:-false}
       Uploads__Path: /data/uploads
       Uploads__MaxBytes: ${WEB_UPLOAD_MAX_BYTES:-104857600}
+      AI__Enabled: ${AI_ENABLED:-false}
+      AI__Provider: ${AI_PROVIDER:-Groq}
+      AI__ApiKey: ${AI_API_KEY:-}
+      AI__Model: ${AI_MODEL:-llama-3.3-70b-versatile}
+      AI__BaseUrl: ${AI_BASE_URL:-https://api.groq.com/openai/v1}
+      AI__MaxRecords: ${AI_MAX_RECORDS:-50}
+      AI__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-30}
+      AI__RequestsPerMinute: ${AI_REQUESTS_PER_MINUTE:-5}
     volumes:
       - uploads_data:/data/uploads
     ports:

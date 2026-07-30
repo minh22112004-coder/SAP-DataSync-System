@@ -9,6 +9,9 @@ const state = {
   importChangeType: "",
   activeView: "data",
   manualImportRunning: false,
+  aiEnabled: false,
+  aiMaxRecords: 0,
+  pendingAiQuery: null,
 };
 
 let manualImportTimer;
@@ -19,6 +22,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   checkHealth();
+  loadAiStatus();
   if (location.hash === "#imports") switchView("imports");
   loadFilterOptions().finally(loadSapData);
 });
@@ -53,6 +57,15 @@ function bindEvents() {
   $("#searchImports").addEventListener("click", () => { state.importPage = 1; loadImportLogs(); });
   $("#runManualImport").addEventListener("click", startManualImport);
   $("#uploadForm").addEventListener("submit", uploadAndImport);
+  $("#generateAiPlan").addEventListener("click", generateAiPlan);
+  $("#interpretAiFilter").addEventListener("click", interpretAiFilter);
+  $("#aiFilterQuestion").addEventListener("keydown", event => {
+    if (event.key === "Enter") { event.preventDefault(); interpretAiFilter(); }
+  });
+  $("#aiFilterPreview").addEventListener("click", event => {
+    if (event.target.closest("[data-apply-ai-filter]")) applyAiFilter();
+    if (event.target.closest("[data-cancel-ai-filter]")) clearAiFilterPreview();
+  });
   $("#importSearch").addEventListener("keydown", event => {
     if (event.key === "Enter") { state.importPage = 1; loadImportLogs(); }
   });
@@ -97,6 +110,20 @@ async function checkHealth() {
   } catch {
     health.className = "system-health unhealthy";
     health.querySelector("span:last-child").textContent = "Mất kết nối";
+  }
+}
+
+async function loadAiStatus() {
+  try {
+    const status = await api("/api/ai/status");
+    state.aiEnabled = Boolean(status.enabled);
+    state.aiMaxRecords = Number(status.maxRecords || 0);
+    $("#aiPlanner").hidden = !state.aiEnabled;
+    $("#aiModelBadge").textContent = `${status.provider} · ${status.model}`;
+    $("#aiScopeNote").textContent = `AI phân tích tối đa ${formatNumber(status.maxRecords)} bản ghi đầu tiên khớp bộ lọc hiện tại.`;
+  } catch {
+    state.aiEnabled = false;
+    $("#aiPlanner").hidden = true;
   }
 }
 
@@ -160,6 +187,164 @@ function buildSapQuery() {
   const scenarios = $$('#scenarioOptions input:checked').map(input => input.value);
   if (scenarios.length) params.set("businessScenario", scenarios.join(","));
   return params;
+}
+
+function buildAiQuery() {
+  const query = Object.fromEntries(buildSapQuery().entries());
+  query.page = 1;
+  query.pageSize = Math.max(10, state.aiMaxRecords || 50);
+  return query;
+}
+
+async function interpretAiFilter() {
+  if (!state.aiEnabled) return;
+  const question = $("#aiFilterQuestion").value.trim();
+  if (!question) {
+    showToast("Hãy nhập câu hỏi cần chuyển thành bộ lọc.");
+    return;
+  }
+
+  const button = $("#interpretAiFilter");
+  const preview = $("#aiFilterPreview");
+  button.disabled = true;
+  button.textContent = "AI đang đọc câu hỏi…";
+  preview.hidden = false;
+  preview.innerHTML = `<div class="ai-plan-loading"><span class="spinner"></span><span>Đang tạo bộ lọc nháp…</span></div>`;
+
+  try {
+    const response = await api("/api/ai/filters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    state.pendingAiQuery = response.query || null;
+    renderAiFilterPreview(response);
+  } catch (error) {
+    state.pendingAiQuery = null;
+    preview.innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Tạo lại bộ lọc nháp";
+  }
+}
+
+function renderAiFilterPreview(response) {
+  const query = response.query || {};
+  const labels = {
+    product: "Product", salesOrganization: "Sales Organization", businessScenario: "Business Scenario",
+    siStatus: "SI Status", salesOffice: "Sales Office", plantCode: "PlantCode", siId: "SI ID",
+    customer: "Customer", oilSc: "OIL SC", oilSo: "OIL SO", oilPo: "OIL PO", search: "Tìm nhanh",
+    createdFrom: "Từ ngày", createdTo: "Đến ngày", sortBy: "Sắp xếp", sortDirection: "Chiều",
+  };
+  const ignored = new Set(["page", "pageSize"]);
+  const chips = Object.entries(query)
+    .filter(([key, value]) => !ignored.has(key) && value !== null && value !== undefined && value !== "")
+    .map(([key, value]) => `<span><b>${escapeHtml(labels[key] || key)}:</b> ${escapeHtml(value)}</span>`)
+    .join("");
+  const assumptions = Array.isArray(response.assumptions) ? response.assumptions : [];
+
+  $("#aiFilterPreview").innerHTML = `
+    <div class="ai-filter-preview-header">
+      <div><span class="section-kicker">Bản nháp · chưa áp dụng</span><strong>${escapeHtml(response.summary || "Bộ lọc do AI đề xuất")}</strong></div>
+      <span class="ai-confirmation-badge">Cần xác nhận</span>
+    </div>
+    <div class="ai-filter-chips">${chips || "<span>Không có điều kiện cụ thể</span>"}</div>
+    ${renderAiNotes("Điểm cần kiểm tra", assumptions)}
+    <div class="ai-filter-actions">
+      <button class="secondary-button" type="button" data-cancel-ai-filter>Hủy</button>
+      <button class="primary-button" type="button" data-apply-ai-filter>Áp dụng bộ lọc</button>
+    </div>`;
+}
+
+function applyAiFilter() {
+  const query = state.pendingAiQuery;
+  if (!query) return;
+
+  const fieldIds = ["product", "salesOrganization", "search", "siStatus", "createdFrom", "createdTo",
+    "salesOffice", "plantCode", "siId", "customer", "oilSc", "oilSo", "oilPo"];
+  fieldIds.forEach(id => { $("#" + id).value = query[id] || ""; });
+
+  const requestedScenarios = String(query.businessScenario || "")
+    .split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
+  $$('#scenarioOptions input').forEach(input => {
+    input.checked = requestedScenarios.some(value =>
+      value === String(input.value).toLowerCase() || value === String(input.dataset.code || "").toLowerCase());
+  });
+
+  if (query.sortBy && [...$("#sortBy").options].some(option => option.value === query.sortBy)) {
+    $("#sortBy").value = query.sortBy;
+  }
+  const direction = query.sortDirection === "asc" ? "asc" : "desc";
+  $("#sortDirection").dataset.direction = direction;
+  $("#sortDirection").textContent = direction === "desc" ? "↓" : "↑";
+  updateAdvancedCount();
+  state.dataPage = 1;
+  clearAiFilterPreview();
+  loadSapData();
+  $("#resultsHeading").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function clearAiFilterPreview() {
+  state.pendingAiQuery = null;
+  $("#aiFilterPreview").hidden = true;
+  $("#aiFilterPreview").innerHTML = "";
+}
+
+async function generateAiPlan() {
+  if (!state.aiEnabled) return;
+  const button = $("#generateAiPlan");
+  const result = $("#aiPlanResult");
+  button.disabled = true;
+  button.textContent = "AI đang lập kế hoạch…";
+  result.hidden = false;
+  result.innerHTML = `<div class="ai-plan-loading"><span class="spinner"></span><span>Đang phân tích tập dữ liệu đã lọc…</span></div>`;
+
+  try {
+    const response = await api("/api/ai/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: $("#aiGoal").value.trim(), query: buildAiQuery() }),
+    });
+    renderAiPlan(response);
+  } catch (error) {
+    result.innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Tạo lại kế hoạch AI";
+  }
+}
+
+function renderAiPlan(response) {
+  const plan = response.plan || {};
+  const actions = Array.isArray(plan.actions) ? plan.actions : [];
+  const risks = Array.isArray(plan.risks) ? plan.risks : [];
+  const assumptions = Array.isArray(plan.assumptions) ? plan.assumptions : [];
+  $("#aiPlanResult").innerHTML = `
+    <header class="ai-plan-title">
+      <div><span class="section-kicker">Kế hoạch đề xuất</span><h3>${escapeHtml(plan.title || "Kế hoạch AI")}</h3></div>
+      <span>${formatNumber(response.analyzedRecords)} / ${formatNumber(response.totalMatchingRecords)} bản ghi</span>
+    </header>
+    <p class="ai-plan-summary">${escapeHtml(plan.executiveSummary || "")}</p>
+    <ol class="ai-action-list">
+      ${actions.map(action => {
+        const ids = Array.isArray(action.relatedShippingInstructionIds) ? action.relatedShippingInstructionIds : [];
+        return `<li>
+          <span class="ai-priority">P${escapeHtml(action.priority)}</span>
+          <div><strong>${escapeHtml(action.action || "")}</strong><p>${escapeHtml(action.reason || "")}</p>
+          ${ids.length ? `<small>SI liên quan: ${ids.map(escapeHtml).join(", ")}</small>` : ""}</div>
+        </li>`;
+      }).join("")}
+    </ol>
+    ${renderAiNotes("Rủi ro cần kiểm tra", risks)}
+    ${renderAiNotes("Giả định của AI", assumptions)}
+    <footer class="ai-disclaimer">${escapeHtml(response.disclaimer || "")}</footer>`;
+}
+
+function renderAiNotes(title, items) {
+  if (!items.length) return "";
+  return `<section class="ai-notes"><h4>${escapeHtml(title)}</h4><ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul></section>`;
 }
 
 async function loadSapData() {

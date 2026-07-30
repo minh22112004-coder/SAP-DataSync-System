@@ -108,6 +108,37 @@
         </div>
       </form>
 
+      <section id="aiPlanner" class="ai-planner" aria-labelledby="aiPlannerHeading" hidden>
+        <div class="ai-planner-header">
+          <div>
+            <p class="section-kicker">Generative AI · Chỉ đề xuất</p>
+            <h2 id="aiPlannerHeading">Tạo kế hoạch từ dữ liệu đang lọc</h2>
+            <p>AI chỉ nhận tối đa một tập bản ghi đã giới hạn và không có quyền sửa SAP, Excel hoặc SQL.</p>
+          </div>
+          <span id="aiModelBadge" class="ai-model-badge"></span>
+        </div>
+        <div class="ai-filter-assistant">
+          <label class="field ai-filter-question">
+            <span>Hỏi AI để tạo bộ lọc</span>
+            <input id="aiFilterQuestion" maxlength="500" autocomplete="off"
+              placeholder="Ví dụ: Tìm SI của SG50 trong tháng này, ưu tiên bản mới nhất">
+          </label>
+          <button id="interpretAiFilter" class="secondary-button" type="button">Tạo bộ lọc nháp</button>
+        </div>
+        <div id="aiFilterPreview" class="ai-filter-preview" aria-live="polite" hidden></div>
+        <div class="ai-planner-controls">
+          <label class="field ai-goal-field">
+            <span>Mục tiêu kế hoạch</span>
+            <textarea id="aiGoal" maxlength="500" rows="3" placeholder="Ví dụ: Ưu tiên các Shipping Instructions có nguy cơ trễ và đề xuất việc cần kiểm tra."></textarea>
+          </label>
+          <button id="generateAiPlan" class="primary-button ai-generate-button" type="button">
+            Tạo kế hoạch AI
+          </button>
+        </div>
+        <p id="aiScopeNote" class="ai-scope-note"></p>
+        <div id="aiPlanResult" class="ai-plan-result" aria-live="polite" hidden></div>
+      </section>
+
       <section class="data-card" aria-labelledby="resultsHeading">
         <div class="card-toolbar">
           <div>
