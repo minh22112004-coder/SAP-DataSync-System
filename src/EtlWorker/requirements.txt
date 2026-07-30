@@ -1,0 +1,4 @@
+APScheduler==3.11.3
+defusedxml==0.7.1
+openpyxl==3.1.5
+pyodbc==5.3.0

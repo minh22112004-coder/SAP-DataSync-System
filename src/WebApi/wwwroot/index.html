@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Tra cứu nhanh dữ liệu Shipping Instructions đã đồng bộ từ SAP.">
+  <title>Locate Flow — SAP DataSync</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#data" aria-label="Locate Flow - Trang dữ liệu SAP">
+      <span class="brand-mark" aria-hidden="true">LF</span>
+      <span><strong>Locate Flow</strong><small>SAP DataSync</small></span>
+    </a>
+    <nav class="primary-nav" aria-label="Điều hướng chính">
+      <button class="nav-item active" type="button" data-view="data">Dữ liệu SAP</button>
+      <button class="nav-item" type="button" data-view="imports">Lịch sử import</button>
+    </nav>
+    <div class="system-health" id="systemHealth" title="Trạng thái kết nối">
+      <span class="health-dot"></span><span>Đang kiểm tra</span>
+    </div>
+  </header>
+
+  <main>
+    <section id="dataView" class="view active" aria-labelledby="dataHeading">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">Locate 3.0 · Shipping Instructions</p>
+          <h1 id="dataHeading">Tra cứu đơn hàng, không chờ Excel</h1>
+          <p class="heading-copy">Lọc dữ liệu đã đồng bộ từ SAP và mở đầy đủ 149 trường khi cần.</p>
+        </div>
+        <div class="result-summary" aria-live="polite">
+          <strong id="totalRecords">—</strong>
+          <span>bản ghi phù hợp</span>
+        </div>
+      </div>
+
+      <form id="filterForm" class="filter-panel">
+        <div class="filter-panel-header">
+          <div>
+            <span class="section-kicker">Bộ lọc nhanh</span>
+            <h2>Điều kiện tra cứu</h2>
+          </div>
+          <button class="text-button" id="resetFilters" type="button">Đặt lại mặc định</button>
+        </div>
+
+        <div class="filter-grid primary-filters">
+          <label class="field">
+            <span>Product</span>
+            <input id="product" name="product" value="12" list="productOptions" autocomplete="off">
+            <datalist id="productOptions"></datalist>
+          </label>
+          <label class="field">
+            <span>Sales Organization</span>
+            <input id="salesOrganization" name="salesOrganization" value="SG50" list="salesOrganizationOptions" autocomplete="off">
+            <datalist id="salesOrganizationOptions"></datalist>
+          </label>
+          <label class="field field-wide">
+            <span>Tìm kiếm nhanh</span>
+            <div class="input-with-key">
+              <input id="search" name="search" type="search" placeholder="SI ID, khách hàng, OIL, booking, container…" autocomplete="off">
+              <kbd>/</kbd>
+            </div>
+          </label>
+          <label class="field">
+            <span>SI Status</span>
+            <select id="siStatus" name="siStatus">
+              <option value="">Tất cả trạng thái</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Created Date từ</span>
+            <input id="createdFrom" name="createdFrom" type="date">
+          </label>
+          <label class="field">
+            <span>đến</span>
+            <input id="createdTo" name="createdTo" type="date">
+          </label>
+        </div>
+
+        <fieldset class="scenario-fieldset">
+          <legend>Business Scenario</legend>
+          <div id="scenarioOptions" class="scenario-options">
+            <label class="check-chip"><input type="checkbox" value="PDO" checked><span>PDO</span></label>
+            <label class="check-chip"><input type="checkbox" value="PWS" checked><span>PWS</span></label>
+            <label class="check-chip"><input type="checkbox" value="SDS" checked><span>SDS</span></label>
+            <label class="check-chip"><input type="checkbox" value="SWS" checked><span>SWS</span></label>
+          </div>
+        </fieldset>
+
+        <details class="advanced-filters">
+          <summary>Bộ lọc chi tiết <span id="advancedCount" class="filter-count" hidden>0</span></summary>
+          <div class="filter-grid">
+            <label class="field"><span>Sales Office</span><input id="salesOffice" list="salesOfficeOptions" autocomplete="off"><datalist id="salesOfficeOptions"></datalist></label>
+            <label class="field"><span>PlantCode</span><input id="plantCode" list="plantCodeOptions" autocomplete="off"><datalist id="plantCodeOptions"></datalist></label>
+            <label class="field"><span>SI ID</span><input id="siId" autocomplete="off"></label>
+            <label class="field"><span>Customer</span><input id="customer" autocomplete="off"></label>
+            <label class="field"><span>OIL SC</span><input id="oilSc" autocomplete="off"></label>
+            <label class="field"><span>OIL SO</span><input id="oilSo" autocomplete="off"></label>
+            <label class="field"><span>OIL PO</span><input id="oilPo" autocomplete="off"></label>
+          </div>
+        </details>
+
+        <div class="filter-actions">
+          <p><span class="info-dot">i</span> Created Date được ánh xạ từ <strong>SI Created on</strong>; OIL SC từ <strong>OIL Sales</strong>.</p>
+          <button class="primary-button" type="submit"><span aria-hidden="true">⌕</span> Tìm kiếm</button>
+        </div>
+      </form>
+
+      <section class="data-card" aria-labelledby="resultsHeading">
+        <div class="card-toolbar">
+          <div>
+            <span class="section-kicker">Kết quả</span>
+            <h2 id="resultsHeading">Danh sách Shipping Instructions</h2>
+          </div>
+          <div class="toolbar-controls">
+            <label>Sắp xếp
+              <select id="sortBy">
+                <option value="createdDate">Created Date</option>
+                <option value="updatedAt">Cập nhật gần nhất</option>
+                <option value="siId">SI ID</option>
+                <option value="customer">Customer</option>
+                <option value="status">SI Status</option>
+              </select>
+            </label>
+            <button class="icon-button" id="sortDirection" type="button" data-direction="desc" aria-label="Đổi chiều sắp xếp" title="Đổi chiều sắp xếp">↓</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SI ID</th><th>Trạng thái</th><th>Khách hàng</th><th>Scenario</th>
+                <th>Plant</th><th>Số lượng</th><th>OIL SC</th><th>Created Date</th><th>ETD</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="dataRows"></tbody>
+          </table>
+          <div id="dataLoading" class="loading-state" aria-live="polite">
+            <span class="spinner"></span><span>Đang tải dữ liệu…</span>
+          </div>
+          <div id="dataEmpty" class="empty-state" hidden>
+            <span class="empty-symbol" aria-hidden="true">⌕</span>
+            <h3>Không tìm thấy bản ghi phù hợp</h3>
+            <p>Hãy thử bỏ bớt điều kiện hoặc đặt lại bộ lọc mặc định.</p>
+          </div>
+        </div>
+
+        <footer class="pagination">
+          <label>Hiển thị
+            <select id="pageSize"><option>25</option><option selected>50</option><option>100</option></select>
+            dòng
+          </label>
+          <span id="pageInfo">Trang — / —</span>
+          <div>
+            <button class="page-button" id="previousPage" type="button" aria-label="Trang trước">←</button>
+            <button class="page-button" id="nextPage" type="button" aria-label="Trang sau">→</button>
+          </div>
+        </footer>
+      </section>
+    </section>
+
+    <section id="importsView" class="view" aria-labelledby="importsHeading" hidden>
+      <div class="page-heading compact-heading">
+        <div>
+          <p class="eyebrow">Theo dõi đồng bộ</p>
+          <h1 id="importsHeading">Lịch sử import</h1>
+          <p class="heading-copy">Kiểm tra file nguồn, kết quả insert/update và lỗi xử lý.</p>
+        </div>
+      </div>
+      <section class="upload-card" aria-labelledby="uploadHeading">
+        <div>
+          <p class="section-kicker">Upload có kiểm soát</p>
+          <h2 id="uploadHeading">Đưa snapshot Excel lên hệ thống</h2>
+          <p>File được lưu tại <code>data/uploads</code>, sau đó ETL tạo bản sao bất biến trong <code>data/archive</code> trước khi đồng bộ.</p>
+          <div id="uploadStatus" class="upload-status" aria-live="polite">Chỉ nhận file .xlsx, tối đa 100 MB.</div>
+        </div>
+        <form id="uploadForm" class="upload-form">
+          <label class="upload-picker"><span>Chọn file Excel</span><input id="uploadFile" name="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></label>
+          <button id="uploadAndImport" class="primary-button" type="submit">Upload &amp; Import</button>
+        </form>
+      </section>
+      <section class="manual-import-card" aria-labelledby="manualImportHeading">
+        <div class="manual-import-icon" aria-hidden="true">↻</div>
+        <div class="manual-import-copy">
+          <p class="section-kicker">Chạy thử ETL</p>
+          <h2 id="manualImportHeading">Kiểm tra file nguồn ngay</h2>
+          <p>Đọc file phù hợp trong <code>data/source</code> và <code>data/uploads</code>, giữ nguyên file Excel và bỏ qua file đã import thành công.</p>
+          <div id="manualImportStatus" class="manual-status" data-state="idle" aria-live="polite">
+            <span class="manual-status-dot"></span>
+            <span id="manualImportMessage">Đang kiểm tra ETL Worker…</span>
+            <time id="manualImportTime"></time>
+          </div>
+        </div>
+        <button id="runManualImport" class="primary-button manual-import-button" type="button" disabled>
+          Chạy import ngay
+        </button>
+      </section>
+      <section class="data-card">
+        <div class="card-toolbar import-toolbar">
+          <div class="import-search">
+            <input id="importSearch" type="search" placeholder="Tìm theo tên file…">
+            <select id="importStatus">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Completed">Completed</option>
+              <option value="Processing">Processing</option>
+              <option value="Pending">Pending</option>
+              <option value="Failed">Failed</option>
+            </select>
+            <button id="searchImports" class="secondary-button" type="button">Lọc</button>
+          </div>
+          <strong id="importTotal">— lần import</strong>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>File</th><th>Trạng thái</th><th>Bắt đầu</th><th>Tổng</th><th>Insert</th><th>Update</th><th>Soft delete</th><th>Không đổi</th><th>Lỗi</th><th></th></tr></thead>
+            <tbody id="importRows"></tbody>
+          </table>
+          <div id="importsLoading" class="loading-state" hidden><span class="spinner"></span><span>Đang tải lịch sử…</span></div>
+          <div id="importsEmpty" class="empty-state" hidden><h3>Chưa có lịch sử import</h3></div>
+        </div>
+        <footer class="pagination">
+          <span id="importPageInfo">Trang — / —</span>
+          <div>
+            <button class="page-button" id="previousImportPage" type="button">←</button>
+            <button class="page-button" id="nextImportPage" type="button">→</button>
+          </div>
+        </footer>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="detailDialog" class="detail-dialog">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <div><p class="eyebrow" id="detailEyebrow">Chi tiết</p><h2 id="detailTitle">Đang tải…</h2></div>
+        <button class="close-button" type="button" data-close-dialog aria-label="Đóng">×</button>
+      </header>
+      <div id="detailMeta" class="detail-meta"></div>
+      <div id="detailContent" class="detail-content"></div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+name: sap-datasync
+
+services:
+  sqlserver:
+    image: ${SQLSERVER_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: ${MSSQL_PID:-Developer}
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
+    volumes:
+      - sql_data:/var/opt/mssql
+    networks:
+      - backend
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" -b -o /dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  web-api:
+    build:
+      context: .
+      dockerfile: docker/webapi.Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__SqlServer: Server=sqlserver,1433;Database=master;User ID=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True
+      Database__Initialize: "true"
+      Database__SchemaScriptsPath: database/scripts
+      EtlWorker__BaseUrl: http://etl-worker:${ETL_CONTROL_PORT:-8090}
+      Uploads__Enabled: ${WEB_UPLOAD_ENABLED:-false}
+      Uploads__Path: /data/uploads
+      Uploads__MaxBytes: ${WEB_UPLOAD_MAX_BYTES:-104857600}
+    volumes:
+      - uploads_data:/data/uploads
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    networks:
+      - backend
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  etl-worker:
+    build:
+      context: .
+      dockerfile: docker/etl-worker.Dockerfile
+    environment:
+      SQL_SERVER: sqlserver,1433
+      SQL_DATABASE: SapDataSync
+      SQL_USER: sa
+      SQL_PASSWORD: ${MSSQL_SA_PASSWORD}
+      SQL_DRIVER: ODBC Driver 18 for SQL Server
+      SQL_ENCRYPT: "true"
+      SQL_TRUST_SERVER_CERTIFICATE: "true"
+      SAP_SOURCE_PATH: /data/source
+      SAP_UPLOAD_PATH: /data/uploads
+      SAP_ARCHIVE_PATH: /data/archive
+      SAP_FILE_PATTERN: ${SAP_FILE_PATTERN:-export*.xlsx}
+      SAP_WORKSHEET_NAME: ${SAP_WORKSHEET_NAME:-}
+      SAP_PRODUCT: ${SAP_PRODUCT:-12}
+      SAP_SALES_ORGANIZATION: ${SAP_SALES_ORGANIZATION:-SG50}
+      ETL_DAILY_TIME: ${ETL_DAILY_TIME:-01:00}
+      ETL_TIMEZONE: ${ETL_TIMEZONE:-Asia/Ho_Chi_Minh}
+      ETL_MIN_FILE_AGE_SECONDS: ${ETL_MIN_FILE_AGE_SECONDS:-10}
+      ETL_ENABLE_SOFT_DELETE: ${ETL_ENABLE_SOFT_DELETE:-false}
+      ETL_BATCH_SIZE: ${ETL_BATCH_SIZE:-500}
+      ETL_RUN_ON_STARTUP: ${ETL_RUN_ON_STARTUP:-false}
+      ETL_RUN_ONCE: "false"
+      ETL_CONTROL_PORT: ${ETL_CONTROL_PORT:-8090}
+    volumes:
+      - type: bind
+        source: ${SAP_SOURCE_PATH:-./data/source}
+        target: /data/source
+        read_only: true
+      - archive_data:/data/archive
+      - uploads_data:/data/uploads:ro
+    networks:
+      - backend
+    expose:
+      - "${ETL_CONTROL_PORT:-8090}"
+    depends_on:
+      web-api:
+        condition: service_healthy
+    init: true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:${ETL_CONTROL_PORT:-8090}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  sql_data:
+  uploads_data:
+  archive_data:
