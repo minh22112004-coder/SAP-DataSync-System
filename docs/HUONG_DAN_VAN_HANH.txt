@@ -1,118 +1,86 @@
 SAP DATASYNC — HƯỚNG DẪN VẬN HÀNH VÀ BÀN GIAO
-Phiên bản: 1.0.1 — Giai đoạn 5
+Phiên bản: 1.1.0 — SQL Server 2022 cài trực tiếp trên Windows
 
 1. YÊU CẦU MÁY TRIỂN KHAI
 
-- Windows 10/11 x64.
-- Docker Desktop với Docker Compose; Docker Desktop phải được mở trước khi dùng hệ thống.
-- Khuyến nghị tối thiểu 8 GB RAM và còn ít nhất 20 GB ổ đĩa.
-- Trình duyệt hiện đại như Microsoft Edge, Chrome hoặc Firefox.
-- Máy người dùng chỉ truy cập Web App từ xa thì không cần cài Docker.
+- Windows x64 phù hợp với SQL Server 2022.
+- Microsoft SQL Server 2022 đã cài trực tiếp trên Windows.
+- Default instance MSSQLSERVER, Mixed Mode, TCP/IP port 1433.
+- Docker và Docker Compose để chạy Web API cùng ETL Worker; database không chạy trong Docker.
+- SQL Server Management Studio (SSMS) nếu người vận hành cần giao diện quản trị database.
+- Khuyến nghị tối thiểu 8 GB RAM, trình duyệt hiện đại và dung lượng đĩa phù hợp dữ liệu.
 
-2. CÀI ĐẶT VÀ KHỞI ĐỘNG
+2. CẤU HÌNH SQL SERVER
 
-1) Chạy SapDataSync-Setup-1.0.1.exe.
+File .env dùng các giá trị SQL_HOST, SQL_PORT, SQL_DATABASE, SQL_USER và SQL_PASSWORD.
+Container dùng SQL_HOST=host.docker.internal để truy cập SQL Server trên Windows host.
+Không dùng localhost trong connection string của container.
+
+Kỹ thuật viên kiểm tra trước bằng:
+
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\test-external-sqlserver.ps1
+
+Script phải xác nhận SQL Server major version 16, Mixed Mode, đăng nhập hợp lệ và quyền tạo
+database. Không gửi file .env hoặc ghi mật khẩu vào command line/log.
+
+3. CÀI ĐẶT VÀ KHỞI ĐỘNG
+
+1) Chạy SapDataSync-Setup-1.1.0.exe.
 2) Mở SAP DataSync từ Start Menu hoặc shortcut Desktop.
-3) Bấm “Khởi động hệ thống”. Lần đầu có thể mất vài phút để build image.
-4) Khi ba dịch vụ báo màu xanh, bấm “Mở Web App”.
-5) Web App mặc định mở tại http://localhost:8080.
+3) Launcher tạo .env từ .env.example nếu chưa tồn tại và không tự đổi mật khẩu SQL Server.
+4) Bấm “Khởi động hệ thống”. Launcher kiểm tra SQL Server trước khi chạy Web API/ETL.
+5) Khi SQL Server, Web API và ETL Worker báo sẵn sàng, bấm “Mở Web App”.
+6) Web App mặc định mở tại http://localhost:8080.
 
-Launcher tự tạo file .env với mật khẩu SQL Server ngẫu nhiên nếu file chưa tồn tại.
-Không cần mở hoặc chỉnh sửa file này khi sử dụng thông thường.
+Nút “Dừng hệ thống” chỉ dừng Web API và ETL Worker. SQL Server service trên Windows không bị
+dừng và database SapDataSync vẫn được giữ nguyên.
 
-3. THIẾT LẬP QUẢN TRỊ LẦN ĐẦU
+4. THIẾT LẬP QUẢN TRỊ LẦN ĐẦU
 
-1) Web App tự chuyển tới trang “Cài đặt” nếu chưa có quản trị viên.
+1) Web App chuyển tới trang “Cài đặt” nếu chưa có quản trị viên.
 2) Tạo mật khẩu tối thiểu 12 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt.
 3) Ghi mật khẩu vào trình quản lý mật khẩu được tổ chức phê duyệt.
-4) Chỉ quản trị viên đã đăng nhập mới có thể upload Excel, chạy import hoặc thay đổi API key.
-
-Mật khẩu được băm PBKDF2 trong SQL Server. Hệ thống không lưu mật khẩu gốc.
-
-4. CẤU HÌNH API KEY AI
-
-1) Mở “Cài đặt” và đăng nhập quản trị.
-2) Dán API key vào ô “API key mới”.
-3) Bấm “Kiểm tra kết nối”.
-4) Khi kết nối thành công, bấm “Lưu API key”.
-
-API key được mã hóa phía server bằng ASP.NET Data Protection. Key gốc không được trả lại
-trình duyệt, không ghi vào log và không xuất hiện trong source code. Dùng nút “Xóa API key”
-để thu hồi cấu hình; các chức năng dữ liệu vẫn hoạt động khi AI bị tắt.
-
-Nếu Web App được truy cập qua mạng thay vì localhost, phải đặt hệ thống sau HTTPS/reverse proxy
-và giới hạn firewall trước khi nhập API key hoặc dữ liệu nghiệp vụ.
+4) Chỉ quản trị viên đã đăng nhập mới có thể upload Excel, import hoặc thay đổi API key.
 
 5. ĐƯA FILE EXCEL VÀO HỆ THỐNG
 
-Cách khuyến nghị:
-
-1) Đăng nhập quản trị.
-2) Mở “Lịch sử import”.
-3) Chọn file .xlsx trong phần “Đưa snapshot Excel lên hệ thống”.
-4) Bấm “Upload & Import”.
-5) Theo dõi trạng thái và mở chi tiết ImportLog khi hoàn tất.
-
-Hệ thống chỉ chấp nhận Open XML .xlsx, kiểm tra kích thước và SHA-256. ETL đọc file nguồn
-ở chế độ chỉ đọc và tạo snapshot trước khi đồng bộ. Không sửa file do SAP tạo.
+Cách khuyến nghị: đăng nhập quản trị, mở “Lịch sử import”, chọn file .xlsx rồi bấm
+“Upload & Import”. Hệ thống kiểm tra định dạng, SHA-256, tạo snapshot và ghi ImportLog.
 
 Cách dùng thư mục nguồn: sao chép file export*.xlsx vào data\source rồi bấm “Chạy import ngay”.
-Không chép file đang được SAP ghi dở. Tốt nhất SAP tạo file tạm rồi đổi tên sang .xlsx khi xong.
+Không chép file đang được SAP ghi dở.
 
 6. XEM LOG VÀ XỬ LÝ LỖI
-
-Trong Launcher, phần “Thông báo” hiển thị lỗi khởi động cơ bản.
-
-Lệnh dành cho kỹ thuật viên, chạy tại thư mục cài đặt:
 
   docker compose ps -a
   docker compose logs --tail 200 web-api
   docker compose logs --tail 200 etl-worker
-  docker compose logs --tail 200 sqlserver
   docker compose logs --since 30m
 
-Không gửi file .env hoặc log chứa dữ liệu nghiệp vụ ra ngoài tổ chức khi chưa được phép.
-API key và mật khẩu không được ứng dụng chủ động ghi log.
+Nếu SQL Server không sẵn sàng, kiểm tra Windows service MSSQLSERVER, TCP/IP, port 1433,
+Mixed Mode, firewall và tài khoản trong .env. Launcher không start/stop SQL Server service.
 
-7. BACKUP DATABASE
-
-Đảm bảo hệ thống đang chạy, sau đó kỹ thuật viên chạy:
+7. BACKUP VÀ RESTORE
 
   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\backup-database.ps1
 
-Script dùng BACKUP DATABASE WITH CHECKSUM, sau đó RESTORE VERIFYONLY. File .bak nằm trong
-thư mục backups và có SHA-256 đi kèm. Sao chép file backup sang thiết bị/vị trí khác theo chính
-sách của tổ chức. Backup chưa được coi là hoàn chỉnh nếu chưa thử restore trên môi trường riêng.
+Script kết nối trực tiếp SQL Server host, tạo COPY_ONLY BACKUP WITH CHECKSUM trong thư mục
+backup mặc định của SQL Server và chạy RESTORE VERIFYONLY. Xem hướng dẫn restore riêng tại
+docs\HUONG_DAN_RESTORE_SQLSERVER.txt. Không tự động restore hoặc ghi đè production.
 
-Không restore trực tiếp lên production nếu chưa có phê duyệt, maintenance window và bản backup
-gần nhất. Việc restore có thể ghi đè dữ liệu nên không được tự động hóa trong Launcher.
+8. DỪNG VÀ GỠ CÀI ĐẶT
 
-8. DỪNG, KHỞI ĐỘNG LẠI VÀ GỠ CÀI ĐẶT
+- “Dừng hệ thống” chỉ chạy docker compose stop cho Web API và ETL Worker.
+- Trước khi gỡ cài đặt, tạo backup database.
+- Uninstaller không xóa SQL Server, database, Docker volume, .env, backup hoặc file Excel.
 
-- Bấm “Dừng hệ thống” trong Launcher. Lệnh này dùng docker compose stop và giữ nguyên volume.
-- Bấm “Khởi động hệ thống” để chạy lại; database và API key mã hóa vẫn được giữ.
-- Trước khi gỡ cài đặt, dừng hệ thống và tạo backup.
-- Uninstaller không tự xóa Docker volume, database, .env, backup hoặc file Excel.
+9. CHECKLIST BÀN GIAO KỸ THUẬT
 
-9. SQL SERVER LICENSE
-
-Cấu hình bàn giao mới mặc định dùng MSSQL_PID=Express. Microsoft công bố Express là lựa chọn
-miễn phí cho production nhỏ. Express có giới hạn tài nguyên/dung lượng; tổ chức phải đánh giá tải
-thực tế. Developer chỉ được dùng cho phát triển, kiểm thử và demo, không dùng production.
-
-Nếu chuyển sang Standard hoặc Enterprise, tổ chức phải có license hợp lệ trước khi đổi MSSQL_PID.
-Tài liệu chính thức:
-https://learn.microsoft.com/en-us/sql/linux/containers/deploy
-https://www.microsoft.com/licensing/guidance/SQL
-
-10. CHECKLIST BÀN GIAO
-
-[ ] Docker Desktop chạy ổn định.
-[ ] Launcher khởi động/dừng/mở Web App được.
-[ ] Đã tạo mật khẩu quản trị và lưu trong password manager.
-[ ] API key đã kiểm tra hoặc xác nhận AI không sử dụng.
+[ ] SQL Server 2022 native, Mixed Mode và TCP 1433 hoạt động.
+[ ] Preflight SQL Server thành công.
+[ ] Launcher chỉ quản lý Web API/ETL và hiển thị đúng trạng thái database.
 [ ] Upload/import file mẫu thành công và ImportLog đúng.
-[ ] Database còn nguyên sau stop/start và recreate container.
-[ ] Đã tạo backup, VERIFYONLY và lưu bản sao ngoài máy triển khai.
-[ ] Đã chọn edition SQL Server phù hợp và lưu bằng chứng license nếu dùng bản trả phí.
-[ ] Người nhận bàn giao biết xem trạng thái, log và liên hệ hỗ trợ.
+[ ] Database còn nguyên sau khi dừng/khởi động lại ứng dụng.
+[ ] Backup và RESTORE VERIFYONLY thành công.
+[ ] Edition SQL Server và license phù hợp với môi trường sử dụng.
+[ ] Mật khẩu SQL thật không nằm trong Git, log hoặc tài liệu bàn giao chung.

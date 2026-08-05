@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource shutdownTokenSource = new();
     private readonly DispatcherTimer refreshTimer;
     private readonly DockerComposeService? dockerService;
+    private readonly ExternalSqlServerService? sqlServerService;
     private bool isBusy;
     private bool isWebReady;
 
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
         if (location is not null)
         {
             dockerService = new DockerComposeService(location, new CommandRunner());
+            sqlServerService = new ExternalSqlServerService(location);
             ProjectPathText.Text = $"Cấu hình: {location.ComposeFile}";
         }
         else
@@ -115,6 +117,27 @@ public partial class MainWindow : Window
                 AppendLog(setupResult.Message);
             }
 
+            if (sqlServerService is not null)
+            {
+                var sqlStatus = await sqlServerService.GetStatusAsync(shutdownTokenSource.Token);
+                ApplyService(
+                    new Dictionary<string, ServiceStatus> { ["sqlserver"] = sqlStatus },
+                    "sqlserver",
+                    SqlStatusDot,
+                    SqlStatusText);
+                if (sqlStatus.State is ServiceState.Unhealthy or ServiceState.Unknown)
+                {
+                    AppendLog($"SQL Server chưa sẵn sàng: {sqlStatus.Detail}");
+                    MessageBox.Show(
+                        $"Không thể kết nối SQL Server 2022: {sqlStatus.Detail}. " +
+                        "Hãy kiểm tra SQL Server service, TCP/IP, port và tài khoản trong file .env.",
+                        "SQL Server chưa sẵn sàng",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
             var hasContainers = await dockerService.HasExistingContainersAsync(shutdownTokenSource.Token);
             AppendLog(hasContainers
                 ? "Đang khởi động các dịch vụ…"
@@ -144,6 +167,7 @@ public partial class MainWindow : Window
             if (ready)
             {
                 AppendLog("Hệ thống đã khởi động thành công và sẵn sàng sử dụng.");
+                await RefreshSnapshotAsync(showLog: false);
             }
             else
             {
@@ -196,7 +220,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            AppendLog("Hệ thống đã dừng. Database và các file dữ liệu vẫn được giữ nguyên.");
+            AppendLog("Web API và ETL đã dừng. SQL Server trên Windows và dữ liệu vẫn được giữ nguyên.");
             await RefreshSnapshotAsync(showLog: false);
         }
         catch (OperationCanceledException) when (shutdownTokenSource.IsCancellationRequested)
@@ -268,6 +292,7 @@ public partial class MainWindow : Window
         try
         {
             var snapshot = await dockerService.GetSnapshotAsync(shutdownTokenSource.Token);
+            snapshot = await AddSqlServerStatusAsync(snapshot, shutdownTokenSource.Token);
             ApplySnapshot(snapshot);
             if (showLog)
             {
@@ -286,6 +311,22 @@ public partial class MainWindow : Window
                 AppendLog($"Không đọc được trạng thái: {exception.Message}");
             }
         }
+    }
+
+    private async Task<SystemSnapshot> AddSqlServerStatusAsync(
+        SystemSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        if (sqlServerService is null)
+        {
+            return snapshot;
+        }
+
+        var services = new Dictionary<string, ServiceStatus>(snapshot.Services, StringComparer.OrdinalIgnoreCase)
+        {
+            ["sqlserver"] = await sqlServerService.GetStatusAsync(cancellationToken)
+        };
+        return snapshot with { Services = services };
     }
 
     private async Task<bool> WaitForDockerAsync(TimeSpan timeout)
@@ -429,7 +470,7 @@ public partial class MainWindow : Window
             return "Docker không trả về thông tin lỗi. Vui lòng kiểm tra Docker Desktop.";
         }
 
-        if (message.Contains("MSSQL_SA_PASSWORD", StringComparison.OrdinalIgnoreCase))
+        if (message.Contains("SQL_PASSWORD", StringComparison.OrdinalIgnoreCase))
         {
             return "Mật khẩu cơ sở dữ liệu chưa được cấu hình. Vui lòng hoàn tất thiết lập lần đầu.";
         }

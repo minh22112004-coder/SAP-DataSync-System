@@ -1,5 +1,4 @@
 using System.IO;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace SapDataSync.Launcher.Services;
@@ -8,7 +7,14 @@ public sealed record EnvironmentSetupResult(bool Created, string Message);
 
 public static class EnvironmentSetupService
 {
-    private const string PasswordPrefix = "MSSQL_SA_PASSWORD=";
+    private static readonly string[] RequiredSettings =
+    [
+        "SQL_HOST",
+        "SQL_PORT",
+        "SQL_DATABASE",
+        "SQL_USER",
+        "SQL_PASSWORD"
+    ];
 
     public static EnvironmentSetupResult EnsureConfigured(string rootDirectory)
     {
@@ -27,23 +33,14 @@ public static class EnvironmentSetupService
         }
 
         var lines = File.ReadAllLines(examplePath, Encoding.UTF8);
-        var replacedPassword = false;
-
-        for (var index = 0; index < lines.Length; index++)
+        var settings = EnvironmentFile.ParseLines(lines);
+        var missingSettings = RequiredSettings
+            .Where(name => !settings.TryGetValue(name, out var value) || string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        if (missingSettings.Length > 0)
         {
-            if (!lines[index].TrimStart().StartsWith(PasswordPrefix, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            lines[index] = $"{PasswordPrefix}{CreateStrongPassword()}";
-            replacedPassword = true;
-            break;
-        }
-
-        if (!replacedPassword)
-        {
-            throw new InvalidDataException(".env.example không có cấu hình MSSQL_SA_PASSWORD.");
+            throw new InvalidDataException(
+                $".env.example thiếu cấu hình: {string.Join(", ", missingSettings)}.");
         }
 
         var temporaryPath = $"{environmentPath}.{Guid.NewGuid():N}.tmp";
@@ -63,12 +60,6 @@ public static class EnvironmentSetupService
         Directory.CreateDirectory(Path.Combine(rootDirectory, "data", "source"));
         return new EnvironmentSetupResult(
             true,
-            "Đã tự động tạo cấu hình lần đầu với mật khẩu database ngẫu nhiên an toàn.");
-    }
-
-    private static string CreateStrongPassword()
-    {
-        var randomPart = Convert.ToHexString(RandomNumberGenerator.GetBytes(18));
-        return $"Sap!{randomPart}a9";
+            "Đã tạo cấu hình kết nối SQL Server từ mẫu. Launcher không thay đổi mật khẩu SQL Server.");
     }
 }

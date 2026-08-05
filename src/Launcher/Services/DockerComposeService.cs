@@ -7,7 +7,7 @@ namespace SapDataSync.Launcher.Services;
 
 public sealed class DockerComposeService(ProjectLocation location, CommandRunner commandRunner)
 {
-    private static readonly string[] ExpectedServices = ["sqlserver", "web-api", "etl-worker"];
+    private static readonly string[] ExpectedServices = ["web-api", "etl-worker"];
 
     public ProjectLocation Location { get; } = location;
 

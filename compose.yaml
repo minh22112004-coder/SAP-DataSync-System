@@ -12,36 +12,17 @@ services:
       - app_keys:/keys
     restart: "no"
 
-  sqlserver:
-    image: ${SQLSERVER_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: ${MSSQL_PID:-Express}
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
-    volumes:
-      - sql_data:/var/opt/mssql
-      - ./backups:/var/opt/mssql/backup
-    networks:
-      - backend
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" -b -o /dev/null
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 20s
-    restart: unless-stopped
-
   web-api:
     build:
       context: .
       dockerfile: docker/webapi.Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__SqlServer: Server=sqlserver,1433;Database=master;User ID=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True
+      ConnectionStrings__SqlServer: "Server=${SQL_HOST:-host.docker.internal},${SQL_PORT:-1433};Database=master;User ID=${SQL_USER:-sa};Password=${SQL_PASSWORD:?Set SQL_PASSWORD in .env};Encrypt=${SQL_ENCRYPT:-true};TrustServerCertificate=${SQL_TRUST_SERVER_CERTIFICATE:-true};Connect Timeout=${SQL_CONNECT_TIMEOUT_SECONDS:-5}"
       Database__Initialize: "true"
       Database__SchemaScriptsPath: database/scripts
+      Database__MaxAttempts: ${SQL_STARTUP_MAX_ATTEMPTS:-30}
+      Database__RetryDelaySeconds: ${SQL_STARTUP_RETRY_DELAY_SECONDS:-2}
       EtlWorker__BaseUrl: http://etl-worker:${ETL_CONTROL_PORT:-8090}
       Uploads__Enabled: ${WEB_UPLOAD_ENABLED:-false}
       Uploads__Path: /data/uploads
@@ -65,8 +46,6 @@ services:
     depends_on:
       volume-permissions:
         condition: service_completed_successfully
-      sqlserver:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/health"]
       interval: 10s
@@ -80,13 +59,15 @@ services:
       context: .
       dockerfile: docker/etl-worker.Dockerfile
     environment:
-      SQL_SERVER: sqlserver,1433
-      SQL_DATABASE: SapDataSync
-      SQL_USER: sa
-      SQL_PASSWORD: ${MSSQL_SA_PASSWORD}
+      SQL_HOST: ${SQL_HOST:-host.docker.internal}
+      SQL_PORT: ${SQL_PORT:-1433}
+      SQL_DATABASE: ${SQL_DATABASE:-SapDataSync}
+      SQL_USER: ${SQL_USER:-sa}
+      SQL_PASSWORD: ${SQL_PASSWORD:?Set SQL_PASSWORD in .env}
       SQL_DRIVER: ODBC Driver 18 for SQL Server
-      SQL_ENCRYPT: "true"
-      SQL_TRUST_SERVER_CERTIFICATE: "true"
+      SQL_ENCRYPT: ${SQL_ENCRYPT:-true}
+      SQL_TRUST_SERVER_CERTIFICATE: ${SQL_TRUST_SERVER_CERTIFICATE:-true}
+      SQL_CONNECT_TIMEOUT_SECONDS: ${SQL_CONNECT_TIMEOUT_SECONDS:-5}
       SAP_SOURCE_PATH: /data/source
       SAP_UPLOAD_PATH: /data/uploads
       SAP_ARCHIVE_PATH: /data/archive
@@ -130,7 +111,6 @@ networks:
     driver: bridge
 
 volumes:
-  sql_data:
   uploads_data:
   archive_data:
   app_keys:

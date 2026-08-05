@@ -1,0 +1,18 @@
+SAP DATASYNC - HUONG DAN RESTORE SQL SERVER 2022
+
+CANH BAO
+Restore co the ghi de du lieu. Chi thuc hien khi co phe duyet, maintenance window va
+backup moi nhat. Dung Web API va ETL Worker truoc khi restore.
+
+1. Mo SQL Server Management Studio (SSMS) va ket noi dung SQL Server instance.
+2. Xac nhan file .bak da duoc tao boi tools\backup-database.ps1 va da qua VERIFYONLY.
+3. Tao them mot backup hien tai neu database cu van con truy cap duoc.
+4. Trong SSMS, chon Databases > Restore Database.
+5. Chon Device, chon dung file .bak va kiem tra database dich la SapDataSync.
+6. Khong chon ghi de database dang dung neu chua co phe duyet.
+7. Thuc hien restore trong maintenance window.
+8. Khoi dong lai Web API; Web API se chay cac schema script con thieu theo co che idempotent.
+9. Kiem tra /api/health, ImportLog, so dong SapData va mot truy van nghiep vu mau.
+10. Khoi dong lai ETL Worker sau khi doi soat hoan tat.
+
+Khong dat mat khau SQL Server trong file huong dan, command line hoac log chia se.

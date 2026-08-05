@@ -12,15 +12,17 @@ Giai đoạn 1 cung cấp nền tảng Docker và database. Giai đoạn 2 sử 
 
 - `web-api`: Web tối thiểu, health endpoint và database bootstrap.
 - `etl-worker`: Python Worker đọc Excel, nạp Staging, đồng bộ insert/update/soft delete và ghi audit.
-- `sqlserver`: SQL Server với persistent volume.
+- SQL Server 2022 được cài trực tiếp trên Windows host và quản trị bằng SSMS.
 
 ## Quyết định kiến trúc
 
 ```text
 Docker Compose
 ├── web-api        ASP.NET Core
-├── etl-worker     Python — chạy ETL mỗi ngày
-└── sqlserver      SQL Server
+└── etl-worker     Python — chạy ETL mỗi ngày
+
+Windows host
+└── SQL Server 2022 (MSSQLSERVER, TCP 1433)
 ```
 
 Python ETL dùng APScheduler, `openpyxl(read_only=True)`, `pyodbc`, `hashlib` và stored procedure SQL. ASP.NET Web API gọi Groq API trực tiếp cho Giai đoạn 4 nên không cần AI container hoặc mô hình local. Importer C# được giữ trong source làm bản tham chiếu nhưng không còn chạy trong Docker Compose.
@@ -28,7 +30,7 @@ Python ETL dùng APScheduler, `openpyxl(read_only=True)`, `pyodbc`, `hashlib` v�
 ## Yêu cầu
 
 - Docker Engine hoặc Docker Desktop có Docker Compose.
-- Bộ nhớ đủ để chạy SQL Server container.
+- SQL Server 2022 đã cài trực tiếp, bật Mixed Mode và TCP/IP port 1433.
 - SQL Server license phù hợp trước khi dùng production.
 
 Người dùng cuối không cần cài Docker; Docker chỉ chạy trên máy phát triển hoặc máy chủ triển khai.
@@ -38,9 +40,9 @@ Người dùng cuối không cần cài Docker; Docker chỉ chạy trên máy p
 Máy Windows triển khai hệ thống có thể dùng giao diện `SapDataSync Launcher` thay cho việc nhập lệnh Docker Compose. Launcher chạy bên ngoài Docker và cung cấp:
 
 - **Khởi động hệ thống**: tự mở Docker Desktop nếu cần; lần chạy đầu sẽ build image, các lần sau chỉ khởi động container.
-- **Dừng hệ thống**: dùng `docker compose stop`, không xóa container, database hoặc volume dữ liệu.
+- **Dừng hệ thống**: dùng `docker compose stop` cho Web API/ETL; không dừng SQL Server Windows service.
 - **Mở Web App**: mở đúng cổng `WEB_PORT` trong trình duyệt.
-- **Làm mới trạng thái**: hiển thị riêng SQL Server, Web App và ETL Worker; trạng thái tự cập nhật mỗi 10 giây.
+- **Làm mới trạng thái**: kiểm tra trực tiếp SQL Server host và trạng thái Web App/ETL mỗi 10 giây.
 
 Chạy Launcher trong môi trường phát triển:
 
@@ -59,12 +61,12 @@ File kết quả nằm tại `artifacts\launcher\win-x64\SapDataSync.Launcher.ex
 Tạo bộ cài đặt Windows có shortcut và uninstaller an toàn:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 1.0.1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 1.1.0
 ```
 
-File kết quả nằm tại `artifacts\installer\SapDataSync-Setup-1.0.1.exe`. Bộ cài không chứa `.env`, API key, database hoặc file Excel. Uninstaller không tự xóa Docker volume và dữ liệu người dùng. Bản phát hành thương mại phải dùng license Inno Setup phù hợp và ký số `Setup.exe` bằng chứng thư của đơn vị phát hành để giảm cảnh báo SmartScreen.
+File kết quả nằm tại `artifacts\installer\SapDataSync-Setup-1.1.0.exe`. Bộ cài không chứa `.env`, API key, database hoặc file Excel. Uninstaller không tự xóa Docker volume, SQL Server hoặc dữ liệu người dùng.
 
-Docker Desktop vẫn phải được cài trên máy chạy hệ thống. Launcher không yêu cầu quyền Administrator và không hiển thị cửa sổ dòng lệnh. Nếu chưa có `.env`, lần khởi động đầu tiên sẽ tự tạo cấu hình từ `.env.example` với mật khẩu SQL Server ngẫu nhiên mạnh; mật khẩu không được hiển thị trên giao diện hoặc ghi vào log. AI vẫn mặc định tắt cho tới khi API key được cấu hình an toàn.
+Docker vẫn chạy Web API và ETL Worker. Nếu chưa có `.env`, Launcher sao chép cấu hình từ `.env.example` và không tự thay đổi mật khẩu của SQL Server đã cài trên host. AI vẫn mặc định tắt cho tới khi API key được cấu hình an toàn.
 
 ## Cấu hình
 
@@ -74,7 +76,7 @@ Tạo file `.env` từ mẫu:
 Copy-Item .env.example .env
 ```
 
-Mở `.env` và thay `MSSQL_SA_PASSWORD` bằng mật khẩu mạnh. Không commit `.env`.
+Mở `.env`, kiểm tra `SQL_HOST`, `SQL_PORT`, `SQL_USER`, `SQL_PASSWORD` và thay mật khẩu mẫu bằng mật khẩu thực tế của SQL Server. Không commit `.env`.
 
 Mặc định, ETL Worker đọc file khớp `export*.xlsx` trong `data/source`. Đặt bản sao file local vào thư mục này:
 
@@ -191,7 +193,6 @@ Kết quả health mong đợi:
 ```powershell
 docker compose logs -f web-api
 docker compose logs -f etl-worker
-docker compose logs -f sqlserver
 ```
 
 Hướng dẫn đầy đủ dành cho người nhận bàn giao nằm tại `docs\HUONG_DAN_VAN_HANH.txt` và được đóng gói trong `Setup.exe`.
@@ -204,11 +205,11 @@ Khi hệ thống đang chạy, tạo backup `COPY_ONLY` có checksum và tự ch
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\backup-database.ps1
 ```
 
-File `.bak` được lưu trong `backups\` và bị Git ignore. Cần sao chép backup sang vị trí độc lập và thử restore trên môi trường riêng; `VERIFYONLY` không thay thế cho bài kiểm thử restore đầy đủ.
+File `.bak` được lưu trong thư mục backup mặc định của SQL Server host. Cần sao chép backup sang vị trí độc lập và thử restore trên môi trường riêng; `VERIFYONLY` không thay thế cho bài kiểm thử restore đầy đủ.
 
 ## SQL Server edition cho production
 
-`.env.example` và Compose mặc định dùng `MSSQL_PID=Express`, phù hợp với deployment nhỏ trong giới hạn của SQL Server Express. `Developer` chỉ dùng cho phát triển/kiểm thử, không dùng production. Nếu đổi sang Standard hoặc Enterprise, tổ chức phải có license hợp lệ trước khi triển khai. Xem tài liệu Microsoft: <https://learn.microsoft.com/en-us/sql/linux/containers/deploy> và <https://www.microsoft.com/licensing/guidance/SQL>.
+Edition của SQL Server 2022 do bộ cài SQL bên ngoài quyết định. Express phù hợp deployment nhỏ trong giới hạn sản phẩm; Developer chỉ dùng phát triển/kiểm thử. Standard hoặc Enterprise cần license hợp lệ.
 
 Mỗi file mới đi qua luồng:
 
@@ -298,7 +299,7 @@ docker compose build etl-worker
 
 ## Kiểm tra Giai đoạn 1
 
-Khi các container đang chạy và `MSSQL_SA_PASSWORD` đã được đặt trong phiên terminal:
+Khi các container đang chạy và cấu hình SQL Server host trong `.env` đã chính xác:
 
 ```powershell
 .\tests\verify-stage1.ps1
@@ -311,7 +312,7 @@ Script kiểm tra build .NET, cấu hình Compose, API/database health, mount Ex
 Sau khi file mẫu đã được import và các container đang chạy:
 
 ```powershell
-$env:MSSQL_SA_PASSWORD = "mật-khẩu-trong-file-env"
+$env:SQL_PASSWORD = "mật-khẩu-trong-file-env"
 .\tests\verify-stage2.ps1
 ```
 

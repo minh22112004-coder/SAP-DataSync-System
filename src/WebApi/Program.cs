@@ -101,7 +101,10 @@ if (app.Configuration.GetValue("Database:Initialize", true))
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGet("/api/health", async (IConfiguration configuration, CancellationToken cancellationToken) =>
+app.MapGet("/api/health", async (
+    IConfiguration configuration,
+    ILoggerFactory loggerFactory,
+    CancellationToken cancellationToken) =>
 {
     var connectionString = configuration.GetConnectionString("SqlServer");
     if (string.IsNullOrWhiteSpace(connectionString))
@@ -128,8 +131,11 @@ app.MapGet("/api/health", async (IConfiguration configuration, CancellationToken
     }
     catch (Exception exception)
     {
+        loggerFactory
+            .CreateLogger("DatabaseHealth")
+            .LogWarning(exception, "SQL Server health check failed.");
         return Results.Json(
-            new { status = "Unhealthy", database = exception.Message },
+            new { status = "Unhealthy", database = "Database connection failed." },
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 });

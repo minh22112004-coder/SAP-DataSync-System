@@ -8,13 +8,15 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 @dataclass(frozen=True)
 class Settings:
-    sql_server: str
+    sql_host: str
+    sql_port: int
     sql_database: str
     sql_user: str
     sql_password: str
     sql_driver: str
     sql_encrypt: bool
     sql_trust_server_certificate: bool
+    sql_connect_timeout_seconds: int
     source_path: str
     upload_path: str | None
     archive_path: str
@@ -41,13 +43,17 @@ class Settings:
             raise ValueError(f"ETL_TIMEZONE is invalid: {timezone_name}") from exception
 
         return cls(
-            sql_server=_required("SQL_SERVER"),
+            sql_host=_required("SQL_HOST"),
+            sql_port=_read_int("SQL_PORT", 1433, 1, 65_535),
             sql_database=os.getenv("SQL_DATABASE", "SapDataSync"),
             sql_user=os.getenv("SQL_USER", "sa"),
             sql_password=_required("SQL_PASSWORD"),
             sql_driver=os.getenv("SQL_DRIVER", "ODBC Driver 18 for SQL Server"),
             sql_encrypt=_read_bool("SQL_ENCRYPT", True),
             sql_trust_server_certificate=_read_bool("SQL_TRUST_SERVER_CERTIFICATE", True),
+            sql_connect_timeout_seconds=_read_int(
+                "SQL_CONNECT_TIMEOUT_SECONDS", 5, 1, 60
+            ),
             source_path=os.getenv("SAP_SOURCE_PATH", "/data/source"),
             upload_path=_optional("SAP_UPLOAD_PATH"),
             archive_path=os.getenv("SAP_ARCHIVE_PATH", "/data/archive"),
@@ -70,14 +76,14 @@ class Settings:
         return ";".join(
             (
                 f"DRIVER={_odbc_escape(self.sql_driver)}",
-                f"SERVER={_odbc_escape(self.sql_server)}",
+                f"SERVER={_odbc_escape(f'{self.sql_host},{self.sql_port}')}",
                 f"DATABASE={_odbc_escape(self.sql_database)}",
                 f"UID={_odbc_escape(self.sql_user)}",
                 f"PWD={_odbc_escape(self.sql_password)}",
                 f"Encrypt={'yes' if self.sql_encrypt else 'no'}",
                 "TrustServerCertificate="
                 f"{'yes' if self.sql_trust_server_certificate else 'no'}",
-                "Connection Timeout=30",
+                f"Connection Timeout={self.sql_connect_timeout_seconds}",
             )
         )
 

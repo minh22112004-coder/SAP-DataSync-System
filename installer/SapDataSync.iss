@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.0.1"
+  #define AppVersion "1.1.0"
 #endif
 
 #define AppName "SAP DataSync"
@@ -40,6 +40,7 @@ Source: "{#SourceRoot}\NuGet.Config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\tools\backup-database.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+Source: "{#SourceRoot}\tools\test-external-sqlserver.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "{#SourceRoot}\docker\*"; DestDir: "{app}\docker"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\database\scripts\*"; DestDir: "{app}\database\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\src\WebApi\*"; DestDir: "{app}\src\WebApi"; Excludes: "bin\*,obj\*"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -70,7 +71,7 @@ begin
   begin
     MsgBox(
       'Trình gỡ cài đặt chỉ xóa chương trình và shortcut.' + #13#10 + #13#10 +
-      'Docker volume, database, file .env và dữ liệu Excel không bị xóa tự động. ' +
+      'Docker volume, SQL Server, database, file .env và dữ liệu Excel không bị xóa tự động. ' +
       'Hãy dừng hệ thống bằng Launcher trước khi gỡ cài đặt.',
       mbInformation,
       MB_OK);

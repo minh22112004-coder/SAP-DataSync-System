@@ -61,11 +61,13 @@ if ($first.sha256 -ne $sourceHash) {
     throw "Uploaded SHA-256 does not match the source file."
 }
 
-$storedPath = Join-Path ".\data\uploads" $first.storedFileName
-if (-not (Test-Path -LiteralPath $storedPath -PathType Leaf)) {
-    throw "Uploaded file was not persisted in data/uploads."
+$containerPath = "/data/uploads/$($first.storedFileName)"
+docker compose exec -T web-api test -f $containerPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Uploaded file was not persisted in the uploads_data volume."
 }
-if ((Get-FileHash -LiteralPath $storedPath -Algorithm SHA256).Hash -ne $sourceHash) {
+$storedHash = (docker compose exec -T web-api sha256sum $containerPath).Split(' ')[0].Trim().ToUpperInvariant()
+if ($LASTEXITCODE -ne 0 -or $storedHash -ne $sourceHash) {
     throw "Persisted upload hash does not match the source file."
 }
 
