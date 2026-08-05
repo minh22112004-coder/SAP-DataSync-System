@@ -61,10 +61,10 @@ File kết quả nằm tại `artifacts\launcher\win-x64\SapDataSync.Launcher.ex
 Tạo bộ cài đặt Windows có shortcut và uninstaller an toàn:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 1.1.0
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 1.1.1
 ```
 
-File kết quả nằm tại `artifacts\installer\SapDataSync-Setup-1.1.0.exe`. Bộ cài không chứa `.env`, API key, database hoặc file Excel. Uninstaller không tự xóa Docker volume, SQL Server hoặc dữ liệu người dùng.
+File kết quả nằm tại `artifacts\installer\SapDataSync-Setup-1.1.1.exe`. Bộ cài không chứa `.env`, API key, database hoặc file Excel. Uninstaller không tự xóa Docker volume, SQL Server hoặc dữ liệu người dùng.
 
 Docker vẫn chạy Web API và ETL Worker. Nếu chưa có `.env`, Launcher sao chép cấu hình từ `.env.example` và không tự thay đổi mật khẩu của SQL Server đã cài trên host. AI vẫn mặc định tắt cho tới khi API key được cấu hình an toàn.
 

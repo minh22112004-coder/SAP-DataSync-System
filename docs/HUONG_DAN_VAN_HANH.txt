@@ -1,5 +1,5 @@
 SAP DATASYNC — HƯỚNG DẪN VẬN HÀNH VÀ BÀN GIAO
-Phiên bản: 1.1.0 — SQL Server 2022 cài trực tiếp trên Windows
+Phiên bản: 1.1.1 — SQL Server 2022 cài trực tiếp trên Windows
 
 1. YÊU CẦU MÁY TRIỂN KHAI
 
@@ -25,7 +25,7 @@ database. Không gửi file .env hoặc ghi mật khẩu vào command line/log.
 
 3. CÀI ĐẶT VÀ KHỞI ĐỘNG
 
-1) Chạy SapDataSync-Setup-1.1.0.exe.
+1) Chạy SapDataSync-Setup-1.1.1.exe.
 2) Mở SAP DataSync từ Start Menu hoặc shortcut Desktop.
 3) Launcher tạo .env từ .env.example nếu chưa tồn tại và không tự đổi mật khẩu SQL Server.
 4) Bấm “Khởi động hệ thống”. Launcher kiểm tra SQL Server trước khi chạy Web API/ETL.

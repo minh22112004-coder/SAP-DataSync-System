@@ -4,7 +4,7 @@ param(
     [string]$Runtime = 'win-x64',
 
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.1.0'
+    [string]$Version = '1.1.1'
 )
 
 $ErrorActionPreference = 'Stop'
